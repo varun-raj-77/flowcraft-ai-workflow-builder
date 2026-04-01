@@ -36,8 +36,9 @@ async function main() {
 
   // ── Database + Start ────────────────────────────────────
   await connectDatabase();
+  const PORT = Number(env.PORT) || 3001;
 
-  httpServer.listen(env.PORT, () => {
+  httpServer.listen(PORT, () => {
     console.log(`[server] FlowCraft API running on port ${env.PORT}`);
     console.log(`[server] Environment: ${env.NODE_ENV}`);
     console.log(`[server] CORS origin: ${env.CLIENT_URL}`);
