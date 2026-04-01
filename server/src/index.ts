@@ -17,7 +17,7 @@ async function main() {
 
   // ── Middleware ───────────────────────────────────────────
   app.use(cors({
-    origin: env.CLIENT_URL,
+    origin: [env.CLIENT_URL],
     credentials: true,
   }));
   app.use(express.json({ limit: '5mb' }));

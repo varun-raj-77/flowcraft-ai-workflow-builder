@@ -4,9 +4,9 @@ import * as authService from '../services/auth.service';
 
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  secure: true,                 // ALWAYS true in production
+  sameSite: 'none' as const,    // CRITICAL FIX
+  maxAge: 7 * 24 * 60 * 60 * 1000,
   path: '/',
 };
 
