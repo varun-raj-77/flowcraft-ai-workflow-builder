@@ -1,3 +1,9 @@
+Live link : https://flowcraft-ai-workflow-builder.vercel.app
+
+# Demo Credentials
+Email: demo@flowcraft.app
+Password: demo123
+
 # FlowCraft
 
 An AI-powered visual workflow builder. Users drag nodes onto a canvas, connect them into execution graphs, configure each step, and run the workflow — watching nodes light up in real time as the engine processes them. A natural language prompt can generate a complete workflow structure that renders instantly on the canvas.
