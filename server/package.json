@@ -3,8 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "dev": "tsx watch src/index.ts",
-  "start": "npx tsx src/index.ts"
+  "start": "node --loader tsx src/index.ts"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
