@@ -71,15 +71,15 @@ interface ConfigFormSwitchProps {
 function ConfigFormSwitch({ nodeId, nodeType, config }: ConfigFormSwitchProps) {
   switch (nodeType) {
     case 'api_call':
-      return <ApiCallConfigForm nodeId={nodeId} config={config as ApiCallConfig} />;
+      return <ApiCallConfigForm nodeId={nodeId} config={config as unknown as ApiCallConfig} />;
     case 'condition':
-      return <ConditionConfigForm nodeId={nodeId} config={config as ConditionConfig} />;
+      return <ConditionConfigForm nodeId={nodeId} config={config as unknown as ConditionConfig} />;
     case 'transform':
-      return <TransformConfigForm nodeId={nodeId} config={config as TransformConfig} />;
+      return <TransformConfigForm nodeId={nodeId} config={config as unknown as TransformConfig} />;
     case 'delay':
-      return <DelayConfigForm nodeId={nodeId} config={config as DelayConfig} />;
+      return <DelayConfigForm nodeId={nodeId} config={config as unknown as DelayConfig} />;
     case 'output':
-      return <OutputConfigForm nodeId={nodeId} config={config as OutputConfig} />;
+      return <OutputConfigForm nodeId={nodeId} config={config as unknown as OutputConfig} />;
     case 'start':
     case 'end':
       return (
