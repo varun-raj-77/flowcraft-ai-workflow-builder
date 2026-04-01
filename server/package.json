@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-  "start": "node --loader tsx src/index.ts"
+  "start": "node --import tsx src/index.ts"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
