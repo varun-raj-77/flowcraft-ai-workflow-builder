@@ -35,7 +35,7 @@ async function main() {
   app.use(errorHandler);
 
   // ── Database + Start ────────────────────────────────────
-  await connectDatabase();
+  // await connectDatabase();
   const PORT = Number(env.PORT) || 3001;
 
   httpServer.listen(PORT, () => {
