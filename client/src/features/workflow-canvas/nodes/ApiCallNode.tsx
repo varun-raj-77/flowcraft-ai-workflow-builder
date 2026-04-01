@@ -6,7 +6,7 @@ import { BaseNode } from './BaseNode';
 type ApiCallNodeProps = NodeProps<Node<FlowNodeData>>;
 
 export const ApiCallNode = memo(function ApiCallNode({ data }: ApiCallNodeProps) {
-  const config = data.config as ApiCallConfig;
+  const config = data.config as unknown as ApiCallConfig;
 
   // Show method + truncated URL for quick visual identification
   const subtitle = config.url
