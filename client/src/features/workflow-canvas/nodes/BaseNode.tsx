@@ -91,11 +91,12 @@ export const BaseNode = memo(function BaseNode({
   return (
     <div
       className={cn(
-        'relative min-w-[160px] max-w-[220px] rounded-lg border bg-white shadow-sm transition-shadow dark:bg-zinc-900',
+        'relative min-w-[160px] max-w-[220px] rounded-lg border bg-white shadow-sm transition-all duration-200 dark:bg-zinc-900',
         isSelected
           ? `${colors.border} ring-2 ${colors.ring} shadow-md`
           : 'border-zinc-200 dark:border-zinc-700 hover:shadow-md',
-        execStatus === 'running' && 'ring-2 ring-blue-400/50',
+        execStatus === 'running' && 'animate-node-running ring-2 ring-blue-400/50',
+        execStatus === 'success' && 'animate-node-complete ring-2 ring-emerald-400/30',
         execStatus === 'failed' && 'ring-2 ring-red-400/50',
       )}
     >
