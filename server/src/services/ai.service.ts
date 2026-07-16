@@ -28,7 +28,7 @@ async function callLLM(userPrompt: string): Promise<string> {
     response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4096, system: WORKFLOW_GENERATION_SYSTEM_PROMPT, messages: [{ role: 'user', content: userPrompt }] }),
+      body: JSON.stringify({ model: env.ANTHROPIC_MODEL, max_tokens: 4096, system: WORKFLOW_GENERATION_SYSTEM_PROMPT, messages: [{ role: 'user', content: userPrompt }] }),
     });
   } catch (error) {
     console.warn('[ai] Provider request failed:', redactText(error instanceof Error ? error.message : String(error)));
@@ -87,7 +87,7 @@ export async function generateWorkflow(prompt: string): Promise<GeneratedWorkflo
       originalPrompt: prompt.trim(),
       generatedAt: new Date().toISOString(),
       provider: 'anthropic',
-      model: 'claude-sonnet-4-20250514',
+      model: env.ANTHROPIC_MODEL,
       capabilityCoverage: assessCapabilityCoverage(prompt, workflow),
     },
   };
