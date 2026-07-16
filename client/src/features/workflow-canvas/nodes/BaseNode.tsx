@@ -84,6 +84,18 @@ export const BaseNode = memo(function BaseNode({
   const execStatus = useExecutionStore((s) =>
     s.currentRun?.stepLogs.find((l) => l.nodeId === nodeId)?.status as StepStatus | undefined,
   );
+  const replayRunId = useExecutionStore((s) => s.replayRunId);
+  const replayStepIndex = useExecutionStore((s) => s.replayStepIndex);
+  const replayRun = useExecutionStore((s) => {
+    if (!s.replayRunId) return null;
+    return s.currentRun?._id === s.replayRunId
+      ? s.currentRun
+      : s.historyRuns.find((run) => run._id === s.replayRunId) ?? null;
+  });
+  const replayPosition = replayRun && nodeId ? replayRun.executionOrder.indexOf(nodeId) : -1;
+  const visualStatus: StepStatus | undefined = replayRunId && replayRun && replayStepIndex !== null && replayPosition >= 0
+    ? (replayPosition < replayStepIndex ? 'success' : replayPosition === replayStepIndex ? 'running' : 'pending')
+    : execStatus;
 
   const typeInfo = NODE_TYPE_REGISTRY[nodeType];
   const colors = ACCENT_COLORS[typeInfo.color] ?? ACCENT_COLORS.zinc;
@@ -95,9 +107,10 @@ export const BaseNode = memo(function BaseNode({
         isSelected
           ? `${colors.border} ring-2 ${colors.ring} shadow-md`
           : 'border-zinc-200 dark:border-zinc-700 hover:shadow-md',
-        execStatus === 'running' && 'animate-node-running ring-2 ring-blue-400/50',
-        execStatus === 'success' && 'animate-node-complete ring-2 ring-emerald-400/30',
-        execStatus === 'failed' && 'ring-2 ring-red-400/50',
+        visualStatus === 'running' && 'animate-node-running ring-2 ring-blue-400/50',
+        visualStatus === 'success' && 'animate-node-complete ring-2 ring-emerald-400/30',
+        visualStatus === 'failed' && 'ring-2 ring-red-400/50',
+        replayRunId && visualStatus === 'pending' && 'opacity-45 grayscale',
       )}
     >
       {/* Left accent bar */}
@@ -105,24 +118,24 @@ export const BaseNode = memo(function BaseNode({
            style={{ color: 'transparent', borderLeftWidth: '3px' }} />
 
       {/* Execution status indicator (top-right corner) */}
-      {execStatus && execStatus !== 'pending' && (
+      {visualStatus && visualStatus !== 'pending' && (
         <div className="absolute -right-1.5 -top-1.5 z-10">
-          {execStatus === 'running' && (
+          {visualStatus === 'running' && (
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 shadow-sm">
               <span className="h-2 w-2 animate-spin rounded-full border border-white border-t-transparent" />
             </span>
           )}
-          {execStatus === 'success' && (
+          {visualStatus === 'success' && (
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[8px] text-white shadow-sm">
               ✓
             </span>
           )}
-          {execStatus === 'failed' && (
+          {visualStatus === 'failed' && (
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] text-white shadow-sm">
               ✕
             </span>
           )}
-          {execStatus === 'skipped' && (
+          {visualStatus === 'skipped' && (
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-zinc-400 text-[8px] text-white shadow-sm">
               –
             </span>

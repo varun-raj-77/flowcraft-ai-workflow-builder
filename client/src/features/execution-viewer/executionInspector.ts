@@ -1,6 +1,6 @@
 import type { ExecutionRun, StepLog } from '@/types';
 
-export const INSPECTOR_TABS = ['live', 'timeline', 'history'] as const;
+export const INSPECTOR_TABS = ['live', 'timeline', 'history', 'variables'] as const;
 export type InspectorTab = (typeof INSPECTOR_TABS)[number];
 
 export interface RunSummary {
@@ -17,6 +17,12 @@ export interface TimelineStep {
   log: StepLog;
   executionOrder: number;
   timestamp: number | null;
+}
+
+export interface PayloadDiff {
+  added: string[];
+  removed: string[];
+  changed: string[];
 }
 
 const SENSITIVE_KEY = /authorization|proxy-authorization|cookie|set-cookie|api[-_]?key|token|password|secret|credential/i;
@@ -74,6 +80,59 @@ export function getLongestDuration(steps: TimelineStep[]): number {
 export function getDurationBarPercent(durationMs: number | undefined, longestDuration: number): number {
   if (!durationMs || durationMs <= 0 || longestDuration <= 0) return 0;
   return Math.round((durationMs / longestDuration) * 100);
+}
+
+/**
+ * A shallow, bounded comparison deliberately avoids walking large API results.
+ * It is intended to orient an operator, not to replace a full JSON diff tool.
+ */
+export function getPayloadDiff(input: unknown, output: unknown, limit = 50): PayloadDiff {
+  const before = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
+  const after = output && typeof output === 'object' && !Array.isArray(output) ? output as Record<string, unknown> : {};
+  const beforeKeys = Object.keys(before);
+  const afterKeys = Object.keys(after);
+  return {
+    added: afterKeys.filter((key) => !(key in before)).slice(0, limit),
+    removed: beforeKeys.filter((key) => !(key in after)).slice(0, limit),
+    changed: afterKeys.filter((key) => key in before && !Object.is(before[key], after[key])).slice(0, limit),
+  };
+}
+
+/**
+ * Returns a bounded preview-size estimate for summary cards. Full payloads
+ * remain owned by the run and are rendered incrementally by JsonViewer.
+ */
+export function getPayloadSize(value: unknown, visitLimit = 200): number {
+  let bytes = 0;
+  let visited = 0;
+  const encoder = new TextEncoder();
+  const visit = (item: unknown, depth = 0) => {
+    if (visited >= visitLimit || depth > 4) return;
+    visited += 1;
+    if (typeof item === 'string') { bytes += encoder.encode(item).byteLength + 2; return; }
+    if (typeof item === 'number' || typeof item === 'boolean') { bytes += String(item).length; return; }
+    if (item === null || item === undefined) { bytes += 4; return; }
+    if (Array.isArray(item)) {
+      bytes += 2;
+      item.slice(0, 50).forEach((child) => visit(child, depth + 1));
+      return;
+    }
+    if (typeof item === 'object') {
+      bytes += 2;
+      Object.entries(item as Record<string, unknown>).slice(0, 50).forEach(([key, child]) => {
+        bytes += encoder.encode(key).byteLength + 3;
+        visit(child, depth + 1);
+      });
+    }
+  };
+  visit(value);
+  return bytes;
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function formatDateTime(value?: string): string {

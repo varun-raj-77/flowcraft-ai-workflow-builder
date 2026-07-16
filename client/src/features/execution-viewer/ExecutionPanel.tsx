@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useUIStore } from '@/stores/uiStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useExecutionStore } from '@/stores/executionStore';
@@ -15,6 +15,9 @@ import {
   buildTimelineSteps,
   formatDateTime,
   formatDuration,
+  formatBytes,
+  getPayloadDiff,
+  getPayloadSize,
   getDurationBarPercent,
   getLongestDuration,
   getNextInspectorTab,
@@ -41,6 +44,7 @@ const TAB_LABELS: Record<InspectorTab, string> = {
   live: 'Live',
   timeline: 'Timeline',
   history: 'History',
+  variables: 'Variables',
 };
 
 function SafeData({ value }: { value: unknown }) {
@@ -55,6 +59,62 @@ function ResponseMetadata({ output, durationMs }: { output: Record<string, unkno
   const itemCount = Array.isArray(data) ? data.length : null;
   if (status === null && itemCount === null && !contentType) return null;
   return <p className="mt-1 text-[10px] text-zinc-500">Response metadata: {status !== null && `HTTP ${status}`}{durationMs != null && ` · ${formatDuration(durationMs)}`}{itemCount !== null && ` · ${itemCount} items`}{contentType && ` · ${contentType}`}</p>;
+}
+
+function PayloadDiffSummary({ input, output }: { input: unknown; output: unknown }) {
+  const diff = useMemo(() => getPayloadDiff(input, output), [input, output]);
+  const size = useMemo(() => getPayloadSize(output), [output]);
+  const entries = [
+    ...diff.added.map((key) => ({ key, prefix: '+', tone: 'text-emerald-600 dark:text-emerald-400' })),
+    ...diff.removed.map((key) => ({ key, prefix: '−', tone: 'text-red-600 dark:text-red-400' })),
+    ...diff.changed.map((key) => ({ key, prefix: '~', tone: 'text-amber-600 dark:text-amber-400' })),
+  ];
+  return <div className="mt-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-[10px] dark:border-zinc-700 dark:bg-zinc-950">
+    <div className="flex items-center justify-between gap-2 text-zinc-500"><span className="font-medium">Changes</span><span>{formatBytes(size)}</span></div>
+    {entries.length === 0 ? <p className="mt-1 text-zinc-400">No top-level key changes.</p> : <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">{entries.map(({ key, prefix, tone }) => <span key={`${prefix}-${key}`} className={tone}>{prefix} {key}</span>)}</div>}
+  </div>;
+}
+
+function ReplayControl({ run }: { run: ExecutionRun }) {
+  const steps = useMemo(() => buildTimelineSteps(run), [run]);
+  const replayRunId = useExecutionStore((state) => state.replayRunId);
+  const replayStepIndex = useExecutionStore((state) => state.replayStepIndex);
+  const setReplayStep = useExecutionStore((state) => state.setReplayStep);
+  const clearReplay = useExecutionStore((state) => state.clearReplay);
+  if (steps.length === 0) return null;
+  const value = replayRunId === run._id && replayStepIndex !== null ? replayStepIndex : steps.length - 1;
+  return <div className="border-b border-zinc-100 bg-blue-50/50 px-4 py-2 dark:border-zinc-800 dark:bg-blue-950/10">
+    <div className="flex items-center justify-between gap-2"><label htmlFor={`execution-replay-${run._id}`} className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300">Replay</label>{replayRunId === run._id && <button type="button" onClick={clearReplay} className="text-[10px] text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-400">Exit replay</button>}</div>
+    <input id={`execution-replay-${run._id}`} aria-label="Replay execution progress" type="range" min="0" max={Math.max(0, steps.length - 1)} value={value} onChange={(event) => setReplayStep(run._id, Number(event.target.value))} className="mt-1 h-1.5 w-full cursor-pointer accent-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" />
+    <p className="mt-1 text-[10px] text-zinc-500">{value + 1} of {steps.length}: {steps[value]?.log.nodeLabel}. Replay is visual-only and never reruns this execution.</p>
+  </div>;
+}
+
+function VariableExplorer({ run }: { run: ExecutionRun | null }) {
+  const selectNode = useUIStore((state) => state.selectNode);
+  const selectedStepNodeId = useExecutionStore((state) => state.selectedStepNodeId);
+  const setSelectedStepNodeId = useExecutionStore((state) => state.setSelectedStepNodeId);
+  if (!run) return <InspectorEmpty message="Run a workflow or select a historical execution to explore its payloads." />;
+  if (run.stepLogs.length === 0) return <InspectorEmpty message="This execution did not record payloads." />;
+  return <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+    {buildTimelineSteps(run).map(({ log, executionOrder }) => {
+      const selected = selectedStepNodeId === log.nodeId;
+      const summary = log.nodeType === 'condition' ? `Condition result: ${String(log.output?.result ?? log.output?.condition ?? 'recorded')}` : `${log.nodeType.replace('_', ' ')} configuration-to-output transition`;
+      return <section key={log.nodeId} className={cn('px-4 py-3 transition-colors', selected && 'bg-blue-50/60 dark:bg-blue-950/15')}>
+        <button type="button" onClick={() => { setSelectedStepNodeId(log.nodeId); selectNode(log.nodeId); }} aria-expanded={selected} className="flex w-full items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+          <span className="text-[10px] tabular-nums text-zinc-400">{executionOrder + 1}</span><span className="min-w-0 flex-1 truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100">{log.nodeLabel}</span><span className="text-[10px] capitalize text-zinc-400">{log.status}</span>
+        </button>
+        {selected && <div className="mt-3 space-y-3">
+          <p className="text-[10px] text-violet-700 dark:text-violet-300">Transformation summary: {summary}</p>
+          <div><p className="text-[10px] font-medium text-zinc-500">Recorded Configuration</p><SafeData value={log.input ?? {}} /><p className="mt-1 text-[10px] text-zinc-400">This run does not retain resolved incoming payloads.</p></div>
+          <PayloadDiffSummary input={log.input} output={log.output} />
+          <div><p className="text-[10px] font-medium text-zinc-500">Runtime Output</p><SafeData value={log.output ?? (log.error ? { error: log.error } : {})} /></div>
+          <div className="rounded-md border border-zinc-200 px-2 py-1.5 text-[10px] dark:border-zinc-700"><p className="font-medium text-zinc-500">Execution</p><p className="mt-0.5 text-zinc-600 dark:text-zinc-300">{STATUS_STYLES[log.status].label} · {formatDuration(log.durationMs)}</p></div>
+          {log.error && <div><p className="text-[10px] font-medium text-red-600 dark:text-red-400">Logs</p><SafeData value={log.error} /></div>}
+        </div>}
+      </section>;
+    })}
+  </div>;
 }
 
 function StepLogRow({ log }: { log: StepLog }) {
@@ -127,6 +187,24 @@ function RunSummary({ run, now }: { run: ExecutionRun; now: number }) {
   );
 }
 
+function ExecutionInsights({ run, now }: { run: ExecutionRun; now: number }) {
+  const summary = useMemo(() => getRunSummary(run, now), [run, now]);
+  const payloadFacts = useMemo(() => run.stepLogs.map((log) => ({ log, size: getPayloadSize(log.output) })), [run]);
+  const largest = payloadFacts.reduce<(typeof payloadFacts)[number] | null>((current, item) => !current || item.size > current.size ? item : current, null);
+  const slowest = run.stepLogs.reduce<StepLog | null>((current, log) => !current || (log.durationMs ?? 0) > (current.durationMs ?? 0) ? log : current, null);
+  const successRate = summary.totalSteps ? Math.round((summary.successfulSteps / summary.totalSteps) * 100) : 0;
+  const facts = [
+    ['Execution time', formatDuration(summary.totalDurationMs)],
+    ['Executed nodes', String(summary.completedSteps)],
+    ['Skipped nodes', String(summary.skippedSteps)],
+    ['Payload size (preview)', `~${formatBytes(payloadFacts.reduce((total, item) => total + item.size, 0))}`],
+    ['Largest node', largest ? `${largest.log.nodeLabel} (${formatBytes(largest.size)})` : '—'],
+    ['Slowest node', slowest ? `${slowest.nodeLabel} (${formatDuration(slowest.durationMs)})` : '—'],
+    ['Success rate', `${successRate}%`],
+  ];
+  return <section aria-label="Execution Insights" className="border-b border-zinc-100 bg-zinc-50/70 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900/20"><p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Execution Insights</p><dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4">{facts.map(([label, value]) => <div key={label}><dt className="text-[10px] text-zinc-400">{label}</dt><dd className="truncate text-[10px] font-medium text-zinc-700 dark:text-zinc-200" title={value}>{value}</dd></div>)}</dl></section>;
+}
+
 function TimelineView({ run, now }: { run: ExecutionRun | null; now: number }) {
   const selectNode = useUIStore((state) => state.selectNode);
   const selectedStepNodeId = useExecutionStore((state) => state.selectedStepNodeId);
@@ -146,6 +224,8 @@ function TimelineView({ run, now }: { run: ExecutionRun | null; now: number }) {
   return (
     <div>
       <RunSummary run={run} now={now} />
+      <ExecutionInsights run={run} now={now} />
+      <ReplayControl run={run} />
       <ol className="border-t border-zinc-100 dark:border-zinc-800">
         {timelineSteps.map(({ log, executionOrder }) => {
           const style = STATUS_STYLES[log.status];
@@ -328,7 +408,7 @@ export function ExecutionPanel() {
   const [height, setHeight] = useState(288);
   const dragStart = useRef<{ y: number; height: number } | null>(null);
   const panelRef = useRef<HTMLElement>(null);
-  const tabRefs = useRef<Record<InspectorTab, HTMLButtonElement | null>>({ live: null, timeline: null, history: null });
+  const tabRefs = useRef<Record<InspectorTab, HTMLButtonElement | null>>({ live: null, timeline: null, history: null, variables: null });
 
   const getBounds = useCallback(() => {
     const measuredHeight = panelRef.current?.parentElement?.getBoundingClientRect().height ?? 0;
@@ -452,6 +532,7 @@ export function ExecutionPanel() {
             {activeInspectorTab === 'live' && <LiveView run={currentRun} lastError={lastError} now={now} />}
             {activeInspectorTab === 'timeline' && <TimelineView run={timelineRun} now={now} />}
             {activeInspectorTab === 'history' && <HistoryView workflowId={workflowId} now={now} />}
+            {activeInspectorTab === 'variables' && <VariableExplorer run={timelineRun} />}
           </div>
         </div>
       )}

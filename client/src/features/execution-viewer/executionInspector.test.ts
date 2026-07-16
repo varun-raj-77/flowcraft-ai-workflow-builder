@@ -3,6 +3,8 @@ import type { ExecutionRun } from '@/types';
 import {
   buildTimelineSteps,
   getDurationBarPercent,
+  getPayloadDiff,
+  getPayloadSize,
   getRunSummary,
   redactInspectionValue,
 } from './executionInspector';
@@ -43,5 +45,17 @@ describe('execution inspector helpers', () => {
       headers: { Authorization: '[REDACTED]' },
       token: '[REDACTED]',
     });
+  });
+
+  it('calculates a shallow bounded payload diff without walking large nested values', () => {
+    expect(getPayloadDiff({ users: [{ id: 1 }], total: 1, removed: true }, { vipUsers: [{ id: 1 }], total: 2 })).toEqual({
+      added: ['vipUsers'],
+      removed: ['users', 'removed'],
+      changed: ['total'],
+    });
+  });
+
+  it('sizes redacted payloads without retaining a duplicate in store state', () => {
+    expect(getPayloadSize({ token: 'private' })).toBeGreaterThan(0);
   });
 });
