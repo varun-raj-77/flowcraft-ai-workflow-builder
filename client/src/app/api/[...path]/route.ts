@@ -3,6 +3,7 @@ import {
   buildUpstreamUrl,
   createProxyResponseHeaders,
   createUpstreamRequestHeaders,
+  getSafeFetchError,
 } from '@/lib/server/apiProxy';
 
 export const dynamic = 'force-dynamic';
@@ -11,13 +12,20 @@ export const runtime = 'nodejs';
 type RouteContext = { params: { path: string[] } };
 
 async function proxy(request: Request, { params }: RouteContext): Promise<Response> {
+  const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
+  const path = `/api/${params.path.map(encodeURIComponent).join('/')}`;
+  let upstreamUrl: URL | undefined;
+
   try {
-    const upstream = await fetch(buildUpstreamUrl(params.path, request.url), {
+    upstreamUrl = buildUpstreamUrl(params.path, request.url);
+    const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body;
+    const upstream = await fetch(upstreamUrl, {
       method: request.method,
       headers: createUpstreamRequestHeaders(request.headers),
-      body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+      body,
+      ...(body ? { duplex: 'half' as const } : {}),
       cache: 'no-store',
-    });
+    } as RequestInit & { duplex?: 'half' });
 
     return new Response(upstream.body, {
       status: upstream.status,
@@ -26,12 +34,26 @@ async function proxy(request: Request, { params }: RouteContext): Promise<Respon
     });
   } catch (error) {
     const isConfigurationError = error instanceof Error && error.message.startsWith('FLOWCRAFT_API_ORIGIN');
-    if (isConfigurationError) console.error('[api-proxy] configuration error:', error.message);
-    else console.error('[api-proxy] upstream request failed');
+    const upstreamHostname = upstreamUrl?.hostname ?? null;
+    if (isConfigurationError) {
+      console.error(JSON.stringify({ event: 'api_proxy_configuration_error', requestId, method: request.method, path, upstreamHostname, errorMessage: error.message }));
+    } else {
+      const details = getSafeFetchError(error);
+      console.error(JSON.stringify({
+        event: 'api_proxy_upstream_fetch_failed',
+        requestId,
+        method: request.method,
+        path: upstreamUrl?.pathname ?? path,
+        upstreamHostname,
+        errorName: details.name,
+        errorMessage: details.message,
+        errorCauseCode: details.causeCode,
+      }));
+    }
 
     return NextResponse.json(
       { error: { code: isConfigurationError ? 'API_PROXY_MISCONFIGURED' : 'API_UPSTREAM_UNAVAILABLE', message: isConfigurationError ? 'API proxy is not configured.' : 'API service is temporarily unavailable.' } },
-      { status: isConfigurationError ? 500 : 502, headers: { 'cache-control': 'private, no-store, max-age=0' } },
+      { status: isConfigurationError ? 500 : 502, headers: { 'cache-control': 'private, no-store, max-age=0', 'x-request-id': requestId } },
     );
   }
 }
