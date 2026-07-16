@@ -9,7 +9,7 @@ import {
   applyEdgeChanges,
   addEdge,
 } from '@xyflow/react';
-import type { Workflow, WorkflowNode, WorkflowEdge, NodeType, FlowNodeData } from '@/types';
+import type { Workflow, WorkflowNode, WorkflowEdge, NodeType, FlowNodeData, GenerationMetadata } from '@/types';
 import { getDefaultConfig, getDefaultLabel } from '@/lib/defaultConfigs';
 import { generateId } from '@/lib/utils';
 
@@ -93,6 +93,7 @@ interface WorkflowMeta {
   name: string;
   description?: string;
   isGeneratedByAI: boolean;
+  generationMetadata?: GenerationMetadata;
 }
 
 interface WorkflowState {
@@ -114,6 +115,7 @@ interface WorkflowState {
   removeNode: (nodeId: string) => void;
   updateNodeData: (nodeId: string, data: Partial<FlowNodeData>) => void;
   updateMeta: (updates: Partial<WorkflowMeta>) => void;
+  applyGeneratedWorkflow: (workflow: Pick<Workflow, 'name' | 'description' | 'nodes' | 'edges' | 'generationMetadata'>) => void;
   markClean: () => void;
   setDirty: () => void;
 
@@ -134,16 +136,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // the next state immutably. We just pass the result into our store.
 
   onNodesChange: (changes) => {
+    const persistsContent = changes.some((change) => change.type !== 'select' && change.type !== 'dimensions');
     set({
       nodes: applyNodeChanges(changes, get().nodes),
-      isDirty: true,
+      isDirty: persistsContent || get().isDirty,
     });
   },
 
   onEdgesChange: (changes) => {
+    const persistsContent = changes.some((change) => change.type !== 'select');
     set({
       edges: applyEdgeChanges(changes, get().edges),
-      isDirty: true,
+      isDirty: persistsContent || get().isDirty,
     });
   },
 
@@ -182,6 +186,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         name: workflow.name,
         description: workflow.description,
         isGeneratedByAI: workflow.isGeneratedByAI,
+        generationMetadata: workflow.generationMetadata,
       },
       isDirty: false,
     }),
@@ -231,6 +236,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   updateMeta: (updates) =>
     set((state) => ({
       meta: state.meta ? { ...state.meta, ...updates } : null,
+      isDirty: true,
+    })),
+
+  applyGeneratedWorkflow: (workflow) =>
+    set((state) => ({
+      nodes: workflow.nodes.map(toFlowNode),
+      edges: workflow.edges.map(toFlowEdge),
+      meta: state.meta ? {
+        ...state.meta,
+        name: workflow.name,
+        description: workflow.description,
+        isGeneratedByAI: true,
+        generationMetadata: workflow.generationMetadata,
+      } : null,
       isDirty: true,
     })),
 

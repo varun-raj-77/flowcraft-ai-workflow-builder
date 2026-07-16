@@ -24,6 +24,20 @@ export interface IWorkflowDocument extends Document {
     label?: string;
   }>;
   isGeneratedByAI: boolean;
+  generationMetadata?: {
+    originalPrompt: string;
+    generatedAt: Date;
+    provider?: string;
+    model?: string;
+    capabilityCoverage?: {
+      requestedCapabilities: string[];
+      implementedCapabilities: string[];
+      missingCapabilities: string[];
+      unsupportedCapabilities: string[];
+      coverage: number;
+      isComplete: boolean;
+    };
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -63,6 +77,20 @@ const workflowSchema = new Schema<IWorkflowDocument>(
     isGeneratedByAI: {
       type: Boolean,
       default: false,
+    },
+    generationMetadata: {
+      originalPrompt: { type: String, maxlength: 2000 },
+      generatedAt: { type: Date },
+      provider: { type: String, maxlength: 100 },
+      model: { type: String, maxlength: 100 },
+      capabilityCoverage: {
+        requestedCapabilities: [String],
+        implementedCapabilities: [String],
+        missingCapabilities: [String],
+        unsupportedCapabilities: [String],
+        coverage: Number,
+        isComplete: Boolean,
+      },
     },
   },
   {

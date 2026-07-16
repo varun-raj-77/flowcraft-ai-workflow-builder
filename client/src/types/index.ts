@@ -13,6 +13,8 @@ export type {
   EdgeConditionBranch,
   FlowNodeData,
   Workflow,
+  CapabilityCoverage,
+  GenerationMetadata,
 } from './workflow';
 
 export type {

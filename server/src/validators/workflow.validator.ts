@@ -92,6 +92,20 @@ export const createWorkflowSchema = z.object({
   nodes: z.array(nodeSchema).default([]),
   edges: z.array(edgeSchema).default([]),
   isGeneratedByAI: z.boolean().default(false),
+  generationMetadata: z.object({
+    originalPrompt: z.string().min(1).max(2000),
+    generatedAt: z.string().datetime(),
+    provider: z.string().max(100).optional(),
+    model: z.string().max(100).optional(),
+    capabilityCoverage: z.object({
+      requestedCapabilities: z.array(z.string()),
+      implementedCapabilities: z.array(z.string()),
+      missingCapabilities: z.array(z.string()),
+      unsupportedCapabilities: z.array(z.string()),
+      coverage: z.number().min(0).max(1),
+      isComplete: z.boolean(),
+    }).optional(),
+  }).optional(),
 });
 
 // ── Workflow (update request body) ──────────────────────────
@@ -102,6 +116,20 @@ export const updateWorkflowSchema = z.object({
   description: z.string().max(500).optional(),
   nodes: z.array(nodeSchema).optional(),
   edges: z.array(edgeSchema).optional(),
+  generationMetadata: z.object({
+    originalPrompt: z.string().min(1).max(2000),
+    generatedAt: z.string().datetime(),
+    provider: z.string().max(100).optional(),
+    model: z.string().max(100).optional(),
+    capabilityCoverage: z.object({
+      requestedCapabilities: z.array(z.string()),
+      implementedCapabilities: z.array(z.string()),
+      missingCapabilities: z.array(z.string()),
+      unsupportedCapabilities: z.array(z.string()),
+      coverage: z.number().min(0).max(1),
+      isComplete: z.boolean(),
+    }).optional(),
+  }).optional(),
 });
 
 // ── Type exports ────────────────────────────────────────────

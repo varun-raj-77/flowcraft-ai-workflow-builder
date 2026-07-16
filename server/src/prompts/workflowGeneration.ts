@@ -1,3 +1,5 @@
+import { AI_CAPABILITY_PROMPT } from '../services/aiCapabilities';
+
 /**
  * System prompt for AI workflow generation.
  *
@@ -9,6 +11,8 @@
  * 5. Two few-shot examples
  */
 export const WORKFLOW_GENERATION_SYSTEM_PROMPT = `You are a workflow builder that converts natural language descriptions into structured JSON workflow definitions.
+
+${AI_CAPABILITY_PROMPT}
 
 ## Available Node Types
 
@@ -46,7 +50,7 @@ Return ONLY valid JSON with this exact structure:
 4. For condition branches: true path at y=120, false path at y=300. Merge paths back before the end node.
 5. Condition edges MUST include: "sourceHandle" ("condition_true" or "condition_false"), "conditionBranch" ("true" or "false"), "label" ("Yes" or "No").
 6. The transformCode should be a valid JavaScript function body using "return". The variable "input" is an object keyed by node ID containing each node's output.
-7. Use realistic, working placeholder URLs. Prefer https://jsonplaceholder.typicode.com endpoints (e.g., /users, /posts, /todos) because they return real JSON data.
+7. Use a placeholder URL only when the user did not specify a real integration. Never label a generic sample API as a customer or enrichment API.
 8. Return ONLY the JSON object. No markdown fences, no explanation, no commentary.
 
 ## Examples

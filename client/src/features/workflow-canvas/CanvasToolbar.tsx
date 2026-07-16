@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { useSaveWorkflow } from './hooks/useSaveWorkflow';
 import { useRunWorkflow } from './hooks/useRunWorkflow';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { GenerationPromptModal } from '@/features/ai-generator/GenerationPromptModal';
 
 function InlineNameEditor() {
   const meta = useWorkflowStore((s) => s.meta);
@@ -67,6 +68,7 @@ export function CanvasToolbar() {
   const isDirty = useWorkflowStore((s) => s.isDirty);
   const meta = useWorkflowStore((s) => s.meta);
   const openAIModal = useUIStore((s) => s.openAIModal);
+  const [isGenerationPromptOpen, setGenerationPromptOpen] = useState(false);
 
   const { save, status } = useSaveWorkflow();
   const { run, isRunning } = useRunWorkflow();
@@ -100,6 +102,7 @@ export function CanvasToolbar() {
         <Button variant="ghost" size="sm" onClick={openAIModal}>
           ✦ AI Generate
         </Button>
+        {meta?.isGeneratedByAI && <Button variant="ghost" size="sm" onClick={() => setGenerationPromptOpen(true)}>Generation Prompt</Button>}
         <Button
           variant="secondary"
           size="sm"
@@ -119,6 +122,7 @@ export function CanvasToolbar() {
           Run
         </Button>
       </div>
+      <GenerationPromptModal isOpen={isGenerationPromptOpen} onClose={() => setGenerationPromptOpen(false)} />
     </div>
   );
 }

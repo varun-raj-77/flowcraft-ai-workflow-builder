@@ -102,6 +102,24 @@ export interface Workflow {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   isGeneratedByAI: boolean;
+  generationMetadata?: GenerationMetadata;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CapabilityCoverage {
+  requestedCapabilities: string[];
+  implementedCapabilities: string[];
+  missingCapabilities: string[];
+  unsupportedCapabilities: string[];
+  coverage: number;
+  isComplete: boolean;
+}
+
+export interface GenerationMetadata {
+  originalPrompt: string;
+  generatedAt: string;
+  provider?: string;
+  model?: string;
+  capabilityCoverage?: CapabilityCoverage;
 }

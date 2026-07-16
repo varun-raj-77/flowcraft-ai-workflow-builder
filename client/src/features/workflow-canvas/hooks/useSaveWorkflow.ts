@@ -11,7 +11,6 @@ export function useSaveWorkflow() {
   const toWorkflowNodes = useWorkflowStore((s) => s.toWorkflowNodes);
   const toWorkflowEdges = useWorkflowStore((s) => s.toWorkflowEdges);
   const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
-  const markClean = useWorkflowStore((s) => s.markClean);
 
   const [status, setStatus] = useState<SaveStatus>('idle');
 
@@ -25,24 +24,27 @@ export function useSaveWorkflow() {
       const edges = toWorkflowEdges();
 
       if (meta?._id) {
-        await api.updateWorkflow(meta._id, {
+        const saved = await api.updateWorkflow(meta._id, {
           name: meta.name,
           description: meta.description,
           nodes,
           edges,
+          generationMetadata: meta.generationMetadata,
         });
+        setWorkflow(saved);
       } else {
         const created = await api.createWorkflow({
           name: meta?.name || 'Untitled Workflow',
           description: meta?.description,
           nodes,
           edges,
+          isGeneratedByAI: meta?.isGeneratedByAI,
+          generationMetadata: meta?.generationMetadata,
         });
         setWorkflow(created);
         router.replace(`/editor/${created._id}`);
       }
 
-      markClean();
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2000);
     } catch (err) {
@@ -51,7 +53,7 @@ export function useSaveWorkflow() {
       setTimeout(() => setStatus('idle'), 3000);
       throw err;
     }
-  }, [status, meta, toWorkflowNodes, toWorkflowEdges, setWorkflow, markClean, router]);
+  }, [status, meta, toWorkflowNodes, toWorkflowEdges, setWorkflow, router]);
 
   return { save, status };
 }

@@ -11,6 +11,7 @@ interface WorkflowCardProps {
 }
 
 export function WorkflowCard({ workflow, onDelete }: WorkflowCardProps) {
+  const promptPreview = workflow.generationMetadata?.originalPrompt;
   // Count nodes by type for the summary chips
   // Note: nodes may be undefined when loaded from the list endpoint
   // (which excludes nodes/edges for performance)
@@ -30,7 +31,11 @@ export function WorkflowCard({ workflow, onDelete }: WorkflowCardProps) {
           <h3 className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">
             {workflow.name}
           </h3>
-          {workflow.description && (
+          {promptPreview ? (
+            <p className="mt-1 line-clamp-2 text-xs text-zinc-500 dark:text-zinc-400">
+              Generated from: {promptPreview}
+            </p>
+          ) : workflow.description && (
             <p className="mt-1 line-clamp-2 text-xs text-zinc-500 dark:text-zinc-400">
               {workflow.description}
             </p>
@@ -63,7 +68,7 @@ export function WorkflowCard({ workflow, onDelete }: WorkflowCardProps) {
       {/* Footer */}
       <div className="mt-auto flex items-center justify-between">
         <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
-          Updated {formatDate(workflow.updatedAt)}
+          {workflow.isGeneratedByAI ? 'Generated · ' : ''}Updated {formatDate(workflow.updatedAt)}
         </span>
 
         <button
