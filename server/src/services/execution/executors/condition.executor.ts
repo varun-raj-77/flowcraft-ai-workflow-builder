@@ -1,5 +1,6 @@
 import { resolveTemplates, type ExecutionContext } from '../templateEngine';
 import type { NodeExecutor } from './types';
+import { redactText } from '../../../utils/redact';
 
 export const executeCondition: NodeExecutor = async ({ config, context }) => {
   const rawExpression = String(config.expression || 'false');
@@ -24,8 +25,8 @@ export const executeCondition: NodeExecutor = async ({ config, context }) => {
     result = Boolean(fn());
   } catch (err: unknown) {
     // Instead of crashing, log the error and default to false
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[condition] Expression eval failed: ${message} | Expression: ${resolved}`);
+    const message = redactText(err instanceof Error ? err.message : String(err));
+    console.warn(`[condition] Expression eval failed: ${message} | Expression: ${redactText(resolved)}`);
     return {
       output: {
         result: false,

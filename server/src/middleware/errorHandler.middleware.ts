@@ -22,10 +22,13 @@ export class AppError extends Error {
  */
 export function errorHandler(
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ): void {
+  if (req.requestId) {
+    res.setHeader('x-request-id', req.requestId);
+  }
   // Known application error
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
@@ -59,8 +62,19 @@ export function errorHandler(
     return;
   }
 
+  if (err instanceof SyntaxError && 'body' in err) {
+    res.status(400).json({
+      error: { code: 'INVALID_JSON', message: 'Request body must be valid JSON.' },
+    });
+    return;
+  }
+
   // Unexpected error
-  console.error('[error]', err);
+  console.error(JSON.stringify({
+    event: 'unexpected_error',
+    requestId: req.requestId,
+    name: err.name,
+  }));
   res.status(500).json({
     error: {
       code: 'INTERNAL_ERROR',

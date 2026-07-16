@@ -75,8 +75,9 @@ export function truncateOutput(
   data: Record<string, unknown>,
   maxBytes: number = 50_000,
 ): Record<string, unknown> {
-  const json = JSON.stringify(data);
-  if (json.length <= maxBytes) return data;
+  const safeData = redactSecrets(data) as Record<string, unknown>;
+  const json = JSON.stringify(safeData);
+  if (json.length <= maxBytes) return safeData;
 
   return {
     _truncated: true,
@@ -84,3 +85,4 @@ export function truncateOutput(
     _preview: json.slice(0, maxBytes),
   };
 }
+import { redactSecrets } from '../../utils/redact';

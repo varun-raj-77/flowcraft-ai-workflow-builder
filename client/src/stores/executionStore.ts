@@ -5,22 +5,26 @@ interface ExecutionState {
   // State
   currentRun: ExecutionRun | null;
   isRunning: boolean;
+  lastError: string | null;
 
   // Actions
   setCurrentRun: (run: ExecutionRun) => void;
   updateNodeStatus: (nodeId: string, update: Partial<StepLog>) => void;
   setRunStatus: (status: ExecutionStatus) => void;
   clearExecution: () => void;
+  setLastError: (error: string | null) => void;
 }
 
 export const useExecutionStore = create<ExecutionState>((set) => ({
   currentRun: null,
   isRunning: false,
+  lastError: null,
 
   setCurrentRun: (run) =>
     set({
       currentRun: run,
       isRunning: run.status === 'running',
+      lastError: null,
     }),
 
   updateNodeStatus: (nodeId, update) =>
@@ -45,5 +49,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
     })),
 
   clearExecution: () =>
-    set({ currentRun: null, isRunning: false }),
+    set({ currentRun: null, isRunning: false, lastError: null }),
+
+  setLastError: (lastError) => set({ lastError }),
 }));

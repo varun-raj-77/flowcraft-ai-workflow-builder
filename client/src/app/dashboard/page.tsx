@@ -8,7 +8,6 @@ import { WorkflowList } from '@/features/workflow-manager/WorkflowList';
 import { AIGeneratorModal } from '@/features/ai-generator/AIGeneratorModal';
 import { useUIStore } from '@/stores/uiStore';
 import * as api from '@/lib/api';
-import { MOCK_WORKFLOWS } from '@/lib/mockData';
 import type { Workflow } from '@/types';
 
 export default function DashboardPage() {
@@ -16,17 +15,18 @@ export default function DashboardPage() {
   const openAIModal = useUIStore((s) => s.openAIModal);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch workflows on mount
   const fetchWorkflows = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const data = await api.listWorkflows();
       setWorkflows(data);
-    } catch {
-      // API unavailable — fall back to mock data for frontend-only dev
-      console.warn('[dashboard] API unavailable, using mock data');
-      setWorkflows(MOCK_WORKFLOWS);
+    } catch (err) {
+      setWorkflows([]);
+      setError(api.getApiErrorMessage(err, 'Unable to load workflows. Check your connection and try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -38,12 +38,12 @@ export default function DashboardPage() {
 
   // Create a new empty workflow
   async function handleCreate() {
+    setError(null);
     try {
       const workflow = await api.createWorkflow({ name: 'Untitled Workflow' });
       router.push(`/editor/${workflow._id}`);
-    } catch {
-      // API unavailable — navigate to a "new" editor
-      router.push('/editor/new');
+    } catch (err) {
+      setError(api.getApiErrorMessage(err, 'Unable to create a workflow. Please try again.'));
     }
   }
 
@@ -53,9 +53,10 @@ export default function DashboardPage() {
     setWorkflows((prev) => prev.filter((w) => w._id !== id));
     try {
       await api.deleteWorkflow(id);
-    } catch {
+    } catch (err) {
       // Revert on failure
       fetchWorkflows();
+      setError(api.getApiErrorMessage(err, 'Unable to delete the workflow. Please try again.'));
     }
   }
 
@@ -81,6 +82,13 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-5 flex items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+          <span>{error}</span>
+          <Button variant="ghost" size="sm" onClick={fetchWorkflows}>Retry</Button>
+        </div>
+      )}
 
       {/* Workflow grid */}
       {isLoading ? (

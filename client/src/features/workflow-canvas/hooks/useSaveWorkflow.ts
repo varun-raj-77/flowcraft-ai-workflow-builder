@@ -15,7 +15,7 @@ export function useSaveWorkflow() {
 
   const [status, setStatus] = useState<SaveStatus>('idle');
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (): Promise<void> => {
     if (status === 'saving') return; // Prevent double-save
 
     setStatus('saving');
@@ -49,6 +49,7 @@ export function useSaveWorkflow() {
       console.error('[save] Failed:', err);
       setStatus('error');
       setTimeout(() => setStatus('idle'), 3000);
+      throw err;
     }
   }, [status, meta, toWorkflowNodes, toWorkflowEdges, setWorkflow, markClean, router]);
 

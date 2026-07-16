@@ -9,6 +9,7 @@ import { topologicalSort, findSkippedNodes } from './dagUtils';
 import { type ExecutionContext, truncateOutput } from './templateEngine';
 import { getExecutor } from './executors';
 import { getIO } from '../../config/socket';
+import { redactText } from '../../utils/redact';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -214,7 +215,7 @@ export async function runExecution(
       } catch (err: unknown) {
         // ── Record failure ──────────────────────────────
         const now = new Date();
-        const message = err instanceof Error ? err.message : String(err);
+        const message = redactText(err instanceof Error ? err.message : String(err));
 
         run.stepLogs[logIndex].status = 'failed';
         run.stepLogs[logIndex].completedAt = now;
@@ -256,7 +257,7 @@ export async function runExecution(
   } catch (err: unknown) {
     // Unexpected engine-level error
     run.status = 'failed';
-    run.error = err instanceof Error ? err.message : 'Unexpected engine error';
+    run.error = redactText(err instanceof Error ? err.message : 'Unexpected engine error');
     run.completedAt = new Date();
 
     run.markModified('stepLogs');

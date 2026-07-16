@@ -4,8 +4,11 @@ import authRoutes from './auth.routes';
 import workflowRoutes from './workflow.routes';
 import executionRoutes from './execution.routes';
 import aiRoutes from './ai.routes';
+import { requireTrustedOrigin } from '../middleware/csrf.middleware';
 
 const router = Router();
+
+router.use(requireTrustedOrigin);
 
 // Public routes
 router.use('/auth', authRoutes);

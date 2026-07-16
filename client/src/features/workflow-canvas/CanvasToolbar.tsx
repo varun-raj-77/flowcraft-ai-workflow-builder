@@ -71,7 +71,7 @@ export function CanvasToolbar() {
   const { save, status } = useSaveWorkflow();
   const { run, isRunning } = useRunWorkflow();
 
-  useKeyboardShortcuts({ onSave: save });
+  useKeyboardShortcuts({ onSave: () => { void save().catch(() => undefined); } });
 
   return (
     <div className="flex h-12 items-center justify-between border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-950">
@@ -103,7 +103,7 @@ export function CanvasToolbar() {
         <Button
           variant="secondary"
           size="sm"
-          onClick={save}
+          onClick={() => { void save().catch(() => undefined); }}
           isLoading={status === 'saving'}
           disabled={!isDirty && !!meta?._id}
         >
@@ -112,7 +112,7 @@ export function CanvasToolbar() {
         <Button
           variant="primary"
           size="sm"
-          onClick={run}
+          onClick={() => { void run(); }}
           isLoading={isRunning}
           disabled={!meta?._id && !isDirty}
         >
