@@ -112,6 +112,40 @@ describe('ExecutionPanel', () => {
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Timeline' }));
   });
 
+  it('explores recorded configuration and runtime output while keeping node details selected across views', () => {
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Variables' }));
+    fireEvent.click(screen.getByRole('button', { name: /Fetch users/i }));
+    expect(screen.getByText('Recorded Configuration')).toBeTruthy();
+    expect(screen.getByText('Runtime Output')).toBeTruthy();
+    expect(screen.getByText('Changes')).toBeTruthy();
+    expect(screen.queryByText('hidden')).toBeNull();
+    expect(useExecutionStore.getState().selectedStepNodeId).toBe('node_1');
+    fireEvent.click(screen.getByRole('tab', { name: 'Live' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Variables' }));
+    expect(screen.getByText('Runtime Output')).toBeTruthy();
+  });
+
+  it('replays an existing run visually without changing execution state', () => {
+    useExecutionStore.setState({ currentRun: { ...liveRun, executionOrder: ['node_1', 'node_3'], stepLogs: [...liveRun.stepLogs, { nodeId: 'node_3', nodeType: 'end', nodeLabel: 'End', status: 'success' }] } });
+    const currentRunBeforeReplay = useExecutionStore.getState().currentRun;
+    const workflowNodesBeforeReplay = useWorkflowStore.getState().nodes;
+    useExecutionStore.setState({ historyRuns: [historicalRun] });
+    useWorkflowStore.setState({ isDirty: false });
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }));
+    const slider = screen.getByRole('slider', { name: 'Replay execution progress' });
+    fireEvent.change(slider, { target: { value: '0' } });
+    expect(useExecutionStore.getState().replayRunId).toBe('live_run');
+    expect(useExecutionStore.getState().replayStepIndex).toBe(0);
+    expect(useExecutionStore.getState().currentRun).toBe(currentRunBeforeReplay);
+    expect(useExecutionStore.getState().historyRuns[0]).toBe(historicalRun);
+    expect(useWorkflowStore.getState().nodes).toBe(workflowNodesBeforeReplay);
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Exit replay' }));
+    expect(useExecutionStore.getState().replayRunId).toBeNull();
+  });
+
   it('resizes within bounds and persists the user preference', () => {
     const { container } = render(<ExecutionPanel />);
     const handle = screen.getByRole('slider', { name: 'Resize execution inspector' });

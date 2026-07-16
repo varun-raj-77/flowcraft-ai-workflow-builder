@@ -14,6 +14,8 @@ interface ExecutionState {
   historyError: string | null;
   selectedStepNodeId: string | null;
   activeInspectorTab: InspectorTab;
+  replayRunId: string | null;
+  replayStepIndex: number | null;
 
   // Actions
   setCurrentRun: (run: ExecutionRun) => void;
@@ -28,6 +30,8 @@ interface ExecutionState {
   selectHistoricalRun: (runId: string | null) => void;
   setSelectedStepNodeId: (nodeId: string | null) => void;
   setActiveInspectorTab: (tab: InspectorTab) => void;
+  setReplayStep: (runId: string, stepIndex: number) => void;
+  clearReplay: () => void;
 }
 
 export const useExecutionStore = create<ExecutionState>((set) => ({
@@ -41,6 +45,8 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
   historyError: null,
   selectedStepNodeId: null,
   activeInspectorTab: 'live',
+  replayRunId: null,
+  replayStepIndex: null,
 
   setCurrentRun: (run) =>
     set({
@@ -71,7 +77,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
     })),
 
   clearExecution: () =>
-    set({ currentRun: null, isRunning: false, lastError: null, selectedStepNodeId: null }),
+    set({ currentRun: null, isRunning: false, lastError: null, selectedStepNodeId: null, replayRunId: null, replayStepIndex: null }),
 
   setLastError: (lastError) => set({ lastError }),
 
@@ -104,11 +110,15 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
     historyStatus: 'idle',
     historyError: null,
     selectedStepNodeId: null,
+    replayRunId: null,
+    replayStepIndex: null,
   }),
 
-  selectHistoricalRun: (selectedHistoricalRunId) => set({ selectedHistoricalRunId, selectedStepNodeId: null }),
+  selectHistoricalRun: (selectedHistoricalRunId) => set({ selectedHistoricalRunId, selectedStepNodeId: null, replayRunId: null, replayStepIndex: null }),
 
   setSelectedStepNodeId: (selectedStepNodeId) => set({ selectedStepNodeId }),
 
   setActiveInspectorTab: (activeInspectorTab) => set({ activeInspectorTab }),
+  setReplayStep: (replayRunId, replayStepIndex) => set({ replayRunId, replayStepIndex }),
+  clearReplay: () => set({ replayRunId: null, replayStepIndex: null }),
 }));
