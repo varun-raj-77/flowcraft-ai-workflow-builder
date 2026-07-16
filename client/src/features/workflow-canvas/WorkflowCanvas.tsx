@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
@@ -9,11 +9,13 @@ import {
   BackgroundVariant,
   type NodeMouseHandler,
   type IsValidConnection,
+  useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useUIStore } from '@/stores/uiStore';
+import { useExecutionStore } from '@/stores/executionStore';
 import { nodeTypes } from './nodes/nodeTypes';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 
@@ -29,6 +31,7 @@ import { useDragAndDrop } from './hooks/useDragAndDrop';
  * React Flow never owns state independently — it's fully controlled.
  */
 export function WorkflowCanvas() {
+  const { setCenter, getViewport } = useReactFlow();
   // ── Store bindings ────────────────────────────────────────
   const nodes = useWorkflowStore((s) => s.nodes);
   const edges = useWorkflowStore((s) => s.edges);
@@ -37,6 +40,15 @@ export function WorkflowCanvas() {
   const onConnect = useWorkflowStore((s) => s.onConnect);
 
   const selectNode = useUIStore((s) => s.selectNode);
+  const selectedStepNodeId = useExecutionStore((s) => s.selectedStepNodeId);
+
+  useEffect(() => {
+    if (!selectedStepNodeId) return;
+    const node = nodes.find((item) => item.id === selectedStepNodeId);
+    if (!node) return;
+    const viewport = getViewport();
+    setCenter(node.position.x + 100, node.position.y + 30, { zoom: Math.min(1.25, Math.max(0.75, viewport.zoom)), duration: 250 });
+  }, [selectedStepNodeId, nodes, setCenter, getViewport]);
 
   // ── Drag and drop from palette ────────────────────────────
   const { onDragOver, onDrop } = useDragAndDrop();

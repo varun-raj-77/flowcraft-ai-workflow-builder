@@ -13,7 +13,7 @@ const liveRun: ExecutionRun = {
   _id: 'live_run', workflowId: 'workflow_1', userId: 'user_1', status: 'completed', triggerType: 'manual',
   startedAt: '2026-07-15T10:00:00.000Z', completedAt: '2026-07-15T10:00:02.000Z',
   createdAt: '2026-07-15T10:00:00.000Z', updatedAt: '2026-07-15T10:00:02.000Z', executionOrder: ['node_1'],
-  stepLogs: [{ nodeId: 'node_1', nodeType: 'api_call', nodeLabel: 'Fetch users', status: 'success', durationMs: 2000, input: { config: { headers: { Authorization: 'Bearer hidden' } } }, output: { token: 'hidden' } }],
+  stepLogs: [{ nodeId: 'node_1', nodeType: 'api_call', nodeLabel: 'Fetch users', status: 'success', durationMs: 2000, input: { config: { headers: { Authorization: 'Bearer hidden' } } }, output: { status: 200, data: [{ id: 1 }, { id: 2 }], headers: { 'content-type': 'application/json' }, token: 'hidden' } }],
 };
 
 const historicalRun: ExecutionRun = {
@@ -35,7 +35,8 @@ beforeEach(() => {
     historyStatus: 'idle', historyError: null, selectedStepNodeId: null, activeInspectorTab: 'live',
   });
   useWorkflowStore.setState({ meta: null, nodes: [], edges: [], isDirty: false });
-  useUIStore.setState({ selectedNodeId: null, isConfigPanelOpen: false, isExecutionPanelOpen: true, isAIModalOpen: false });
+  window.localStorage.clear();
+  useUIStore.setState({ selectedNodeId: null, isConfigPanelOpen: false, isExecutionPanelOpen: true, isExecutionInspectorMaximized: false, isAIModalOpen: false });
 });
 
 afterEach(cleanup);
@@ -99,6 +100,7 @@ describe('ExecutionPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Fetch users/i }));
     expect(screen.getByText(/Authorization/).textContent).toContain('[REDACTED]');
     expect(screen.queryByText('hidden')).toBeNull();
+    expect(screen.getByText(/Response metadata: HTTP 200 .* 2 items .* application\/json/)).toBeTruthy();
   });
 
   it('supports keyboard tab navigation', () => {
@@ -108,5 +110,53 @@ describe('ExecutionPanel', () => {
     fireEvent.keyDown(liveTab, { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true');
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Timeline' }));
+  });
+
+  it('resizes within bounds and persists the user preference', () => {
+    const { container } = render(<ExecutionPanel />);
+    const handle = screen.getByRole('slider', { name: 'Resize execution inspector' });
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 500 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 380 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 380 });
+    expect(Number(handle.getAttribute('aria-valuenow'))).toBeGreaterThan(288);
+    expect(Number(window.localStorage.getItem('flowcraft.executionInspector.height'))).toBeGreaterThan(288);
+    expect(container.querySelector('[aria-label="Execution Inspector"]')).toBeTruthy();
+  });
+
+  it('clamps resize height and safely restores a valid stored preference', () => {
+    window.localStorage.setItem('flowcraft.executionInspector.height', '300');
+    render(<ExecutionPanel />);
+    const handle = screen.getByRole('slider', { name: 'Resize execution inspector' });
+    expect(handle.getAttribute('aria-valuenow')).toBe('300');
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 500 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: -10000 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: -10000 });
+    expect(Number(handle.getAttribute('aria-valuenow'))).toBe(Number(handle.getAttribute('aria-valuemax')));
+  });
+
+  it('falls back from an invalid stored height without dirtying the workflow', () => {
+    window.localStorage.setItem('flowcraft.executionInspector.height', 'not-a-number');
+    useWorkflowStore.setState({ isDirty: false });
+    render(<ExecutionPanel />);
+    const handle = screen.getByRole('slider', { name: 'Resize execution inspector' });
+    expect(Number(handle.getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(Number(handle.getAttribute('aria-valuemin')));
+    expect(Number(handle.getAttribute('aria-valuenow'))).toBeLessThanOrEqual(Number(handle.getAttribute('aria-valuemax')));
+    fireEvent.wheel(screen.getByRole('tabpanel'));
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+  });
+
+  it('collapses and maximizes without clearing run or active tab', () => {
+    useExecutionStore.setState({ activeInspectorTab: 'timeline' });
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse execution inspector' }));
+    expect(useExecutionStore.getState().currentRun?._id).toBe('live_run');
+    expect(useExecutionStore.getState().activeInspectorTab).toBe('timeline');
+    useExecutionStore.getState().updateNodeStatus('node_1', { status: 'failed' });
+    expect(useExecutionStore.getState().currentRun?.stepLogs[0].status).toBe('failed');
+    fireEvent.click(screen.getByRole('button', { name: 'Restore execution inspector' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Maximize execution inspector' }));
+    expect(useUIStore.getState().isExecutionInspectorMaximized).toBe(true);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(useUIStore.getState().isExecutionInspectorMaximized).toBe(false);
   });
 });
