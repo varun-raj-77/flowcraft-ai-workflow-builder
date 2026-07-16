@@ -198,8 +198,15 @@ function InspectorEmpty({ message }: { message: string }) {
 
 function LiveView({ run, lastError, now }: { run: ExecutionRun | null; lastError: string | null; now: number }) {
   if (!run) return <InspectorEmpty message={lastError || 'Click Run to execute the workflow.'} />;
+  const summary = getRunSummary(run, now);
   return (
     <div>
+      {run.status !== 'running' && (
+        <div className={cn('mx-4 mt-3 flex items-center justify-between rounded-xl border px-4 py-3 transition-all duration-300', run.status === 'completed' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/20' : 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/20')}>
+          <div><p className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">{run.status === 'completed' ? 'Workflow completed' : `Workflow ${run.status}`}</p><p className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-400">{summary.successfulSteps} successful / {summary.failedSteps} failed / {summary.skippedSteps} skipped</p></div>
+          <span className="text-[10px] font-medium tabular-nums text-zinc-600 dark:text-zinc-300">{formatDuration(summary.totalDurationMs)}</span>
+        </div>
+      )}
       <RunSummary run={run} now={now} />
       <div className="border-t border-zinc-100 dark:border-zinc-800">
         {run.stepLogs.map((log) => <StepLogRow key={log.nodeId} log={log} />)}
@@ -396,8 +403,8 @@ export function ExecutionPanel() {
   };
 
   return (
-    <section ref={panelRef} className={cn('flex shrink-0 flex-col border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950', isMaximized && 'min-h-0 flex-1')} style={!isMaximized && isOpen ? { height } : undefined} aria-label="Execution Inspector">
-      {isOpen && !isMaximized && <div role="slider" tabIndex={0} aria-label="Resize execution inspector" aria-valuemin={getBounds().min} aria-valuemax={getBounds().max} aria-valuenow={height} onPointerDown={beginResize} onPointerMove={resize} onPointerUp={finishResize} onPointerCancel={finishResize} onKeyDown={resizeByKeyboard} onDoubleClick={() => applyHeight(288, true)} className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"><span className="h-1 w-12 rounded-full bg-zinc-300 group-hover:bg-zinc-400 dark:bg-zinc-700 dark:group-hover:bg-zinc-500" /></div>}
+    <section ref={panelRef} className={cn('flex shrink-0 flex-col border-t border-zinc-200 bg-white transition-[height] duration-200 dark:border-zinc-800 dark:bg-zinc-950', isMaximized && 'min-h-0 flex-1')} style={!isMaximized && isOpen ? { height } : undefined} aria-label="Execution Inspector">
+      {isOpen && !isMaximized && <div role="slider" tabIndex={0} aria-label="Resize execution inspector" aria-valuemin={getBounds().min} aria-valuemax={getBounds().max} aria-valuenow={height} onPointerDown={beginResize} onPointerMove={resize} onPointerUp={finishResize} onPointerCancel={finishResize} onKeyDown={resizeByKeyboard} onDoubleClick={() => applyHeight(288, true)} className="group flex h-3 shrink-0 cursor-row-resize items-center justify-center touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"><span className="h-1 w-14 rounded-full bg-zinc-300 transition-colors group-hover:bg-violet-400 dark:bg-zinc-700 dark:group-hover:bg-violet-500" /></div>}
       <button
         type="button"
         onClick={() => setExecutionPanelOpen(!isOpen)}
@@ -412,7 +419,7 @@ export function ExecutionPanel() {
         </span>
       </button>
 
-      <div className="flex justify-end gap-1 border-b border-zinc-100 px-3 py-1 dark:border-zinc-800">
+      <div className="sticky top-0 z-20 flex justify-end gap-1 border-b border-zinc-100 bg-white/95 px-3 py-1 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
         {isOpen && <button type="button" onClick={() => setExecutionPanelOpen(false)} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Collapse execution inspector">Collapse</button>}
         {!isOpen && <button type="button" onClick={() => setExecutionPanelOpen(true)} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Restore execution inspector">Restore</button>}
         {isOpen && (isMaximized ? <button type="button" onClick={restoreExecutionInspector} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Restore execution inspector">Restore</button> : <button type="button" onClick={maximizeExecutionInspector} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Maximize execution inspector">Maximize</button>)}

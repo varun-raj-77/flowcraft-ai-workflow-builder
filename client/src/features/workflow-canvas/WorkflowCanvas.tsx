@@ -42,6 +42,7 @@ export function WorkflowCanvas() {
 
   const selectNode = useUIStore((s) => s.selectNode);
   const selectedStepNodeId = useExecutionStore((s) => s.selectedStepNodeId);
+  const isRunning = useExecutionStore((s) => s.isRunning);
   const lastFocusedExecutionNodeId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -116,6 +117,15 @@ export function WorkflowCanvas() {
 
   return (
     <div className="relative flex-1" onKeyDown={onKeyDown} tabIndex={0}>
+      {nodes.length === 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <div className="rounded-2xl border border-dashed border-zinc-300 bg-white/90 px-6 py-5 text-center shadow-sm backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/90">
+            <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-sm font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">AI</span>
+            <p className="mt-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">Start with a workflow node</p>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Drag a node here or generate a workflow with AI.</p>
+          </div>
+        </div>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -132,7 +142,7 @@ export function WorkflowCanvas() {
         fitViewOptions={{ padding: 0.2 }}
         defaultEdgeOptions={{
           type: 'smoothstep',
-          animated: false,
+          animated: isRunning,
         }}
         proOptions={{ hideAttribution: true }}
         className="bg-zinc-50 dark:bg-zinc-950"

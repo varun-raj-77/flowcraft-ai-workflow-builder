@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/stores/uiStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
@@ -16,6 +16,15 @@ const EXAMPLE_PROMPTS = [
   'Fetch order data, wait 2 seconds, then log the total revenue',
 ];
 
+const GENERATION_STAGES = [
+  'Understanding workflow...',
+  'Designing execution graph...',
+  'Selecting node types...',
+  'Connecting workflow...',
+  'Validating...',
+  'Ready',
+];
+
 export function AIGeneratorModal() {
   const isOpen = useUIStore((s) => s.isAIModalOpen);
   const closeModal = useUIStore((s) => s.closeAIModal);
@@ -24,17 +33,28 @@ export function AIGeneratorModal() {
 
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStage, setGenerationStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<CapabilityCoverage | null>(null);
+
+  useEffect(() => {
+    if (!isGenerating) return;
+    const timer = window.setInterval(() => {
+      setGenerationStage((stage) => Math.min(stage + 1, GENERATION_STAGES.length - 2));
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [isGenerating]);
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || isGenerating) return;
 
     setIsGenerating(true);
+    setGenerationStage(0);
     setError(null);
 
     try {
       const result = await api.generateWorkflow(prompt.trim());
+      setGenerationStage(GENERATION_STAGES.length - 1);
       const resultCoverage = result.generationMetadata.capabilityCoverage;
       if (!resultCoverage?.isComplete) {
         setCoverage(resultCoverage ?? null);
@@ -144,6 +164,13 @@ export function AIGeneratorModal() {
             </p>
           </div>
 
+          {!isGenerating && !prompt.trim() && (
+            <div className="mt-4 rounded-xl border border-dashed border-violet-200 bg-violet-50/50 px-4 py-3 text-center dark:border-violet-900/60 dark:bg-violet-950/20">
+              <p className="text-xs font-medium text-violet-800 dark:text-violet-200">Start with the outcome you want</p>
+              <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">Include the data source, the decision to make, and what should happen next.</p>
+            </div>
+          )}
+
           {/* Error */}
           {error && (
             <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-950/30">
@@ -179,16 +206,20 @@ export function AIGeneratorModal() {
 
           {/* Loading state */}
           {isGenerating && (
-            <div className="mt-4 flex items-center gap-3 rounded-lg bg-zinc-50 px-4 py-3 dark:bg-zinc-800/50">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-600" />
+            <div className="mt-4 rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4 dark:border-violet-900/50 dark:from-violet-950/30 dark:to-zinc-900">
+              <div className="flex items-center gap-3">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-600 text-[10px] font-semibold text-white shadow-sm animate-pulse">AI</span>
               <div>
                 <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Building your workflow...
+                  {GENERATION_STAGES[generationStage]}
                 </p>
                 <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
                   This usually takes 5–15 seconds.
                 </p>
               </div>
+              </div>
+              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-950"><div className="h-full rounded-full bg-violet-600 transition-all duration-500 ease-out" style={{ width: `${((generationStage + 1) / GENERATION_STAGES.length) * 100}%` }} /></div>
+              <div className="mt-3 space-y-1" aria-live="polite">{GENERATION_STAGES.slice(0, generationStage + 1).map((stage, index) => <p key={stage} className={index === generationStage ? 'text-xs font-medium text-violet-800 dark:text-violet-200' : 'text-[10px] text-zinc-400 dark:text-zinc-500'}><span className="mr-2">{index === generationStage ? '•' : '✓'}</span>{stage}</p>)}</div>
             </div>
           )}
         </div>

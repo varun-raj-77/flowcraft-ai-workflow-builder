@@ -52,7 +52,7 @@ export function Button({
 }: ButtonProps) {
   const classes = cn(
     'inline-flex items-center justify-center gap-2 rounded-lg font-medium',
-    'transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400',
+    'transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400',
     'disabled:pointer-events-none disabled:opacity-50',
     variantStyles[variant],
     sizeStyles[size],
