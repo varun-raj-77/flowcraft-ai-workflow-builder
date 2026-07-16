@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useWorkflowStore } from '@/stores/workflowStore';
+import { useUIStore } from '@/stores/uiStore';
 import { NodePalette } from '@/features/workflow-canvas/NodePalette';
 import { CanvasToolbar } from '@/features/workflow-canvas/CanvasToolbar';
 import { WorkflowCanvas } from '@/features/workflow-canvas/WorkflowCanvas';
@@ -20,6 +21,7 @@ export default function EditorPage() {
   const params = useParams<{ workflowId: string }>();
   const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
   const clearWorkflow = useWorkflowStore((s) => s.clearWorkflow);
+  const isInspectorMaximized = useUIStore((s) => s.isExecutionInspectorMaximized);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [loadError, setLoadError] = useState('');
 
@@ -75,20 +77,20 @@ export default function EditorPage() {
         <CanvasToolbar />
 
         <div className="flex flex-1 overflow-hidden">
-          <NodePalette />
+          {!isInspectorMaximized && <NodePalette />}
 
           <div className="flex flex-1 flex-col overflow-hidden">
-            {loadState === 'loading' ? (
+            {!isInspectorMaximized && (loadState === 'loading' ? (
               <div className="flex flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-950">
                 <span className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-600" />
               </div>
             ) : (
               <WorkflowCanvas />
-            )}
+            ))}
             <ExecutionPanel />
           </div>
 
-          <ConfigPanel />
+          {!isInspectorMaximized && <ConfigPanel />}
         </div>
       </div>
       <AIGeneratorModal />

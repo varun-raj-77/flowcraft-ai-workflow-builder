@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -9,13 +9,16 @@ import {
   BackgroundVariant,
   type NodeMouseHandler,
   type IsValidConnection,
+  useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useUIStore } from '@/stores/uiStore';
+import { useExecutionStore } from '@/stores/executionStore';
 import { nodeTypes } from './nodes/nodeTypes';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
+import { focusExecutionNode } from './executionNodeFocus';
 
 /**
  * WorkflowCanvas — the centerpiece of the editor.
@@ -29,6 +32,7 @@ import { useDragAndDrop } from './hooks/useDragAndDrop';
  * React Flow never owns state independently — it's fully controlled.
  */
 export function WorkflowCanvas() {
+  const { setCenter, getViewport } = useReactFlow();
   // ── Store bindings ────────────────────────────────────────
   const nodes = useWorkflowStore((s) => s.nodes);
   const edges = useWorkflowStore((s) => s.edges);
@@ -37,6 +41,18 @@ export function WorkflowCanvas() {
   const onConnect = useWorkflowStore((s) => s.onConnect);
 
   const selectNode = useUIStore((s) => s.selectNode);
+  const selectedStepNodeId = useExecutionStore((s) => s.selectedStepNodeId);
+  const lastFocusedExecutionNodeId = useRef<string | null>(null);
+
+  useEffect(() => {
+    lastFocusedExecutionNodeId.current = focusExecutionNode({
+      selectedNodeId: selectedStepNodeId,
+      lastFocusedNodeId: lastFocusedExecutionNodeId.current,
+      nodes,
+      getViewport,
+      setCenter,
+    });
+  }, [selectedStepNodeId, nodes, setCenter, getViewport]);
 
   // ── Drag and drop from palette ────────────────────────────
   const { onDragOver, onDrop } = useDragAndDrop();

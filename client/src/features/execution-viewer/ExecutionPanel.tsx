@@ -8,6 +8,7 @@ import { NODE_TYPE_REGISTRY } from '@/lib/constants';
 import * as api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { ExecutionRun, StepLog, StepStatus } from '@/types';
+import { JsonViewer } from './JsonViewer';
 import {
   INSPECTOR_TABS,
   type InspectorTab,
@@ -43,11 +44,17 @@ const TAB_LABELS: Record<InspectorTab, string> = {
 };
 
 function SafeData({ value }: { value: unknown }) {
-  return (
-    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-zinc-600 dark:text-zinc-400">
-      {JSON.stringify(redactInspectionValue(value), null, 2)}
-    </pre>
-  );
+  return <JsonViewer value={value} />;
+}
+
+function ResponseMetadata({ output, durationMs }: { output: Record<string, unknown>; durationMs?: number }) {
+  const status = typeof output.status === 'number' ? output.status : null;
+  const data = output.data;
+  const headers = output.headers as Record<string, unknown> | undefined;
+  const contentType = typeof headers?.['content-type'] === 'string' ? headers['content-type'] : null;
+  const itemCount = Array.isArray(data) ? data.length : null;
+  if (status === null && itemCount === null && !contentType) return null;
+  return <p className="mt-1 text-[10px] text-zinc-500">Response metadata: {status !== null && `HTTP ${status}`}{durationMs != null && ` · ${formatDuration(durationMs)}`}{itemCount !== null && ` · ${itemCount} items`}{contentType && ` · ${contentType}`}</p>;
 }
 
 function StepLogRow({ log }: { log: StepLog }) {
@@ -93,7 +100,8 @@ function StepLogRow({ log }: { log: StepLog }) {
           )}
           {log.output && (
             <div>
-              <p className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">Output</p>
+              <p className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">Runtime Output</p>
+              <ResponseMetadata output={log.output} durationMs={log.durationMs} />
               <SafeData value={log.output} />
             </div>
           )}
@@ -298,7 +306,10 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
 
 export function ExecutionPanel() {
   const isOpen = useUIStore((state) => state.isExecutionPanelOpen);
-  const togglePanel = useUIStore((state) => state.toggleExecutionPanel);
+  const setExecutionPanelOpen = useUIStore((state) => state.setExecutionPanelOpen);
+  const isMaximized = useUIStore((state) => state.isExecutionInspectorMaximized);
+  const maximizeExecutionInspector = useUIStore((state) => state.maximizeExecutionInspector);
+  const restoreExecutionInspector = useUIStore((state) => state.restoreExecutionInspector);
   const workflowId = useWorkflowStore((state) => state.meta?._id);
   const currentRun = useExecutionStore((state) => state.currentRun);
   const lastError = useExecutionStore((state) => state.lastError);
@@ -307,7 +318,38 @@ export function ExecutionPanel() {
   const activeInspectorTab = useExecutionStore((state) => state.activeInspectorTab);
   const setActiveInspectorTab = useExecutionStore((state) => state.setActiveInspectorTab);
   const [now, setNow] = useState(() => Date.now());
+  const [height, setHeight] = useState(288);
+  const dragStart = useRef<{ y: number; height: number } | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const tabRefs = useRef<Record<InspectorTab, HTMLButtonElement | null>>({ live: null, timeline: null, history: null });
+
+  const getBounds = useCallback(() => {
+    const measuredHeight = panelRef.current?.parentElement?.getBoundingClientRect().height ?? 0;
+    const availableHeight = measuredHeight > 0
+      ? measuredHeight
+      : (typeof window === 'undefined' ? 680 : Math.max(400, window.innerHeight - 120));
+    const min = Math.min(220, Math.max(160, Math.round(availableHeight * 0.2)));
+    const max = Math.max(min, Math.min(Math.round(availableHeight * 0.82), availableHeight - 160));
+    return { min, max, preferred: Math.max(min, Math.min(max, Math.round(availableHeight * 0.28))) };
+  }, []);
+  const applyHeight = useCallback((nextHeight: number, persist = false) => {
+    const { min, max } = getBounds();
+    const clamped = Math.round(Math.max(min, Math.min(max, nextHeight)));
+    setHeight(clamped);
+    if (persist) window.localStorage.setItem('flowcraft.executionInspector.height', String(clamped));
+  }, [getBounds]);
+
+  useEffect(() => {
+    const stored = Number(window.localStorage.getItem('flowcraft.executionInspector.height'));
+    const { min, max, preferred } = getBounds();
+    setHeight(Number.isFinite(stored) && stored >= min && stored <= max ? stored : preferred);
+  }, [getBounds]);
+  useEffect(() => {
+    if (!isMaximized) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') restoreExecutionInspector(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isMaximized, restoreExecutionInspector]);
 
   useEffect(() => {
     if (currentRun?.status !== 'running') return;
@@ -327,11 +369,38 @@ export function ExecutionPanel() {
     tabRefs.current[nextTab]?.focus();
   };
 
+  const beginResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isOpen || isMaximized) return;
+    dragStart.current = { y: event.clientY, height };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    document.body.classList.add('select-none');
+  };
+  const resize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStart.current) return;
+    applyHeight(dragStart.current.height - (event.clientY - dragStart.current.y));
+    window.dispatchEvent(new Event('resize'));
+  };
+  const finishResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStart.current) return;
+    const finalHeight = dragStart.current.height - (event.clientY - dragStart.current.y);
+    dragStart.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    document.body.classList.remove('select-none');
+    applyHeight(finalHeight, true);
+  };
+  const resizeByKeyboard = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowUp') { event.preventDefault(); applyHeight(height + 32, true); }
+    if (event.key === 'ArrowDown') { event.preventDefault(); applyHeight(height - 32, true); }
+    if (event.key === 'Home') { event.preventDefault(); setExecutionPanelOpen(false); }
+    if (event.key === 'End') { event.preventDefault(); maximizeExecutionInspector(); }
+  };
+
   return (
-    <section className="border-t border-zinc-200 dark:border-zinc-800" aria-label="Execution Inspector">
+    <section ref={panelRef} className={cn('flex shrink-0 flex-col border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950', isMaximized && 'min-h-0 flex-1')} style={!isMaximized && isOpen ? { height } : undefined} aria-label="Execution Inspector">
+      {isOpen && !isMaximized && <div role="slider" tabIndex={0} aria-label="Resize execution inspector" aria-valuemin={getBounds().min} aria-valuemax={getBounds().max} aria-valuenow={height} onPointerDown={beginResize} onPointerMove={resize} onPointerUp={finishResize} onPointerCancel={finishResize} onKeyDown={resizeByKeyboard} onDoubleClick={() => applyHeight(288, true)} className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"><span className="h-1 w-12 rounded-full bg-zinc-300 group-hover:bg-zinc-400 dark:bg-zinc-700 dark:group-hover:bg-zinc-500" /></div>}
       <button
         type="button"
-        onClick={togglePanel}
+        onClick={() => setExecutionPanelOpen(!isOpen)}
         className="flex w-full items-center justify-between bg-white px-4 py-2 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:bg-zinc-950 dark:hover:bg-zinc-900"
         aria-expanded={isOpen}
       >
@@ -343,8 +412,14 @@ export function ExecutionPanel() {
         </span>
       </button>
 
+      <div className="flex justify-end gap-1 border-b border-zinc-100 px-3 py-1 dark:border-zinc-800">
+        {isOpen && <button type="button" onClick={() => setExecutionPanelOpen(false)} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Collapse execution inspector">Collapse</button>}
+        {!isOpen && <button type="button" onClick={() => setExecutionPanelOpen(true)} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Restore execution inspector">Restore</button>}
+        {isOpen && (isMaximized ? <button type="button" onClick={restoreExecutionInspector} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Restore execution inspector">Restore</button> : <button type="button" onClick={maximizeExecutionInspector} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Maximize execution inspector">Maximize</button>)}
+      </div>
+
       {isOpen && (
-        <div className="h-72 overflow-y-auto bg-white dark:bg-zinc-950">
+        <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-zinc-950">
           <div className="sticky top-0 z-10 border-b border-zinc-100 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-950" role="tablist" aria-label="Execution Inspector views">
             <div className="flex gap-4">
               {INSPECTOR_TABS.map((tab) => (
@@ -366,7 +441,7 @@ export function ExecutionPanel() {
               ))}
             </div>
           </div>
-          <div id={`execution-inspector-panel-${activeInspectorTab}`} role="tabpanel" aria-labelledby={`execution-inspector-tab-${activeInspectorTab}`}>
+          <div id={`execution-inspector-panel-${activeInspectorTab}`} role="tabpanel" aria-labelledby={`execution-inspector-tab-${activeInspectorTab}`} onWheel={(event) => event.stopPropagation()} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {activeInspectorTab === 'live' && <LiveView run={currentRun} lastError={lastError} now={now} />}
             {activeInspectorTab === 'timeline' && <TimelineView run={timelineRun} now={now} />}
             {activeInspectorTab === 'history' && <HistoryView workflowId={workflowId} now={now} />}
