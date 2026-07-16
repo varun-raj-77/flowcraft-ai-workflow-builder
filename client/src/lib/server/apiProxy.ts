@@ -89,3 +89,13 @@ export function createProxyResponseHeaders(upstreamHeaders: Headers): Headers {
 
   return headers;
 }
+
+export function getSafeFetchError(error: unknown): { name: string; message: string; causeCode: string | null } {
+  const fetchError = error instanceof Error ? error : new Error('Unknown upstream fetch failure');
+  const cause = fetchError.cause as { code?: unknown } | undefined;
+  return {
+    name: fetchError.name,
+    message: fetchError.message.replace(/(https?:\/\/[^\s?]+)\?\S*/g, '$1?[REDACTED]'),
+    causeCode: typeof cause?.code === 'string' ? cause.code : null,
+  };
+}
