@@ -1,4 +1,5 @@
 import { type Request, type Response, type NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 import { verifyToken } from '../utils/jwt';
 
 // Extend Express Request to include userId
@@ -19,9 +20,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   const token = req.cookies?.token;
 
   if (!token) {
-    res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
-    });
+    rejectAuthentication(req, res, 'MISSING_TOKEN', 'Authentication required');
     return;
   }
 
@@ -29,9 +28,26 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
     const payload = verifyToken(token);
     req.userId = payload.userId;
     next();
-  } catch {
-    res.status(401).json({
-      error: { code: 'INVALID_TOKEN', message: 'Invalid or expired token' },
-    });
+  } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      rejectAuthentication(req, res, 'TOKEN_EXPIRED', 'Your session has expired. Please sign in again.');
+      return;
+    }
+    rejectAuthentication(req, res, 'INVALID_TOKEN', 'Invalid authentication token');
   }
+}
+
+function rejectAuthentication(
+  req: Request,
+  res: Response,
+  code: 'MISSING_TOKEN' | 'TOKEN_EXPIRED' | 'INVALID_TOKEN',
+  message: string,
+): void {
+  console.warn(JSON.stringify({
+    event: 'authentication_failed',
+    requestId: req.requestId,
+    code,
+    path: req.path,
+  }));
+  res.status(401).json({ error: { code, message } });
 }

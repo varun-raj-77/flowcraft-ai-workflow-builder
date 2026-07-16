@@ -10,6 +10,7 @@ export function useRunWorkflow() {
   const meta = useWorkflowStore((s) => s.meta);
   const isDirty = useWorkflowStore((s) => s.isDirty);
   const setCurrentRun = useExecutionStore((s) => s.setCurrentRun);
+  const setLastError = useExecutionStore((s) => s.setLastError);
   const isRunning = useExecutionStore((s) => s.isRunning);
   const { save } = useSaveWorkflow();
   const { joinRun } = useExecutionSocket();
@@ -46,25 +47,25 @@ export function useRunWorkflow() {
   const run = useCallback(async () => {
     if (isRunning) return;
 
-    let workflowId = meta?._id;
-
-    if (!workflowId || isDirty) {
-      await save();
-      workflowId = useWorkflowStore.getState().meta?._id;
-    }
-
-    if (!workflowId) {
-      console.error('[run] Cannot execute: no workflow ID');
-      return;
-    }
-
-    // Open the execution panel
-    const uiState = useUIStore.getState();
-    if (!uiState.isExecutionPanelOpen) {
-      uiState.toggleExecutionPanel();
-    }
-
     try {
+      setLastError(null);
+      let workflowId = meta?._id;
+
+      if (!workflowId || isDirty) {
+        await save();
+        workflowId = useWorkflowStore.getState().meta?._id;
+      }
+
+      if (!workflowId) {
+        throw new Error('Save the workflow before running it.');
+      }
+
+      // Open the execution panel only after persistence succeeds.
+      const uiState = useUIStore.getState();
+      if (!uiState.isExecutionPanelOpen) {
+        uiState.toggleExecutionPanel();
+      }
+
       const fullRun = await api.runWorkflow(workflowId);
       setCurrentRun(fullRun);
 
@@ -75,8 +76,9 @@ export function useRunWorkflow() {
       startPolling(fullRun._id);
     } catch (err) {
       console.error('[run] Execution failed:', err);
+      setLastError(api.getApiErrorMessage(err, 'Unable to run this workflow. Please try again.'));
     }
-  }, [meta, isDirty, isRunning, save, setCurrentRun, joinRun, startPolling]);
+  }, [meta, isDirty, isRunning, save, setCurrentRun, setLastError, joinRun, startPolling]);
 
   return { run, isRunning };
 }

@@ -1,6 +1,8 @@
 import type { Workflow, ExecutionRun } from '@/types';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+// All browser API traffic is same-origin. Next.js rewrites /api to the
+// server-only FLOWCRAFT_API_ORIGIN, so the session cookie remains first-party.
+const BASE_URL = '/api';
 
 // ── Error type ──────────────────────────────────────────────
 
@@ -24,7 +26,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       'Content-Type': 'application/json',
       ...options.headers,
     },
-    credentials: 'include', // Sends cookies for auth (Phase 9)
+    credentials: 'include',
+    cache: 'no-store',
   });
 
   // 204 No Content (e.g. DELETE)
@@ -32,7 +35,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     return undefined as T;
   }
 
-  const json = await res.json();
+  const body = await res.text();
+  let json: { data?: T; error?: { code?: string; message?: string } } = {};
+  if (body) {
+    try {
+      json = JSON.parse(body);
+    } catch {
+      throw new ApiError(res.status, 'INVALID_RESPONSE', 'The server returned an invalid response.');
+    }
+  }
 
   if (!res.ok) {
     const error = json.error || {};
@@ -44,6 +55,23 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   return json.data as T;
+}
+
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof ApiError)) return fallback;
+
+  switch (error.status) {
+    case 401:
+      return 'Your session has expired. Please sign in again.';
+    case 403:
+      return 'You do not have permission to perform this action.';
+    case 404:
+      return 'The requested resource no longer exists.';
+    case 429:
+      return 'Too many requests. Please wait a moment and try again.';
+    default:
+      return error.message || fallback;
+  }
 }
 
 // ── Workflow endpoints ──────────────────────────────────────
@@ -164,4 +192,9 @@ export async function logout(): Promise<void> {
 
 export async function getMe(): Promise<AuthUser> {
   return request<AuthUser>('/auth/me');
+}
+
+/** One-time socket credential; this is deliberately not the JWT. */
+export async function createSocketTicket(): Promise<{ ticket: string }> {
+  return request<{ ticket: string }>('/auth/socket-ticket', { method: 'POST' });
 }

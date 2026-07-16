@@ -13,7 +13,6 @@ import { AIGeneratorModal } from '@/features/ai-generator/AIGeneratorModal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import * as api from '@/lib/api';
-import { MOCK_WORKFLOWS } from '@/lib/mockData';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -22,10 +21,12 @@ export default function EditorPage() {
   const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
   const clearWorkflow = useWorkflowStore((s) => s.clearWorkflow);
   const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     async function loadWorkflow() {
       setLoadState('loading');
+      setLoadError('');
 
       if (params.workflowId === 'new') {
         // Don't clear if AI generation already loaded nodes into the store
@@ -41,15 +42,10 @@ export default function EditorPage() {
         const workflow = await api.getWorkflow(params.workflowId);
         setWorkflow(workflow);
         setLoadState('ready');
-      } catch {
-        const mock = MOCK_WORKFLOWS.find((w) => w._id === params.workflowId);
-        if (mock) {
-          setWorkflow(mock);
-          setLoadState('ready');
-        } else {
-          clearWorkflow();
-          setLoadState('error');
-        }
+      } catch (error) {
+        clearWorkflow();
+        setLoadError(api.getApiErrorMessage(error, 'This workflow could not be loaded.'));
+        setLoadState('error');
       }
     }
 
@@ -66,7 +62,7 @@ export default function EditorPage() {
         <EmptyState
           icon="⚠"
           title="Workflow not found"
-          description="This workflow doesn't exist or couldn't be loaded."
+          description={loadError || "This workflow doesn't exist or couldn't be loaded."}
           action={<Button href="/dashboard">Back to Dashboard</Button>}
         />
       </div>

@@ -1,10 +1,11 @@
 import { resolveTemplates, type ExecutionContext } from '../templateEngine';
 import type { NodeExecutor } from './types';
+import { redactText } from '../../../utils/redact';
 
 export const executeOutput: NodeExecutor = async ({ config, context }) => {
   const logLevel = String(config.logLevel || 'info');
   const rawMessage = String(config.message || '');
-  const message = resolveTemplates(rawMessage, context);
+  const message = redactText(resolveTemplates(rawMessage, context));
 
   // Log to server console for observability
   const prefix = `[workflow:${logLevel.toUpperCase()}]`;

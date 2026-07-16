@@ -8,6 +8,7 @@ import {
   validateUniqueNodeIds,
   isValidDAG,
 } from '../validators/workflow.validator';
+import { redactText } from '../utils/redact';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ async function callLLM(userPrompt: string): Promise<string> {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    console.error('[ai] Anthropic API error:', response.status, errorBody);
+    console.error('[ai] Anthropic API error:', response.status, redactText(errorBody));
 
     if (response.status === 429) {
       throw new AppError(503, 'AI_RATE_LIMITED', 'AI service is rate limited. Please try again in a moment.');
@@ -261,7 +262,7 @@ export async function generateWorkflow(prompt: string): Promise<GeneratedWorkflo
       // If it's a validation error from our pipeline, throw it
       if (err instanceof AppError && err.statusCode < 500) throw err;
       // Otherwise fall through to fallback
-      console.warn('[ai] LLM call failed, using fallback generator:', err instanceof Error ? err.message : err);
+      console.warn('[ai] LLM call failed, using fallback generator:', redactText(err instanceof Error ? err.message : String(err)));
     }
   }
 
