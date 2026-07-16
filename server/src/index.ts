@@ -49,6 +49,7 @@ async function main() {
   httpServer.listen(PORT, () => {
     console.log(`[server] FlowCraft API running on port ${env.PORT}`);
     console.log(`[server] Environment: ${env.NODE_ENV}`);
+    console.log(`[server] Using Anthropic model: ${env.ANTHROPIC_MODEL}`);
     console.log(`[server] Trusted origins configured: ${env.TRUSTED_ORIGINS.length}`);
   });
 }
