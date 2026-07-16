@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -18,6 +18,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import { nodeTypes } from './nodes/nodeTypes';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
+import { focusExecutionNode } from './executionNodeFocus';
 
 /**
  * WorkflowCanvas — the centerpiece of the editor.
@@ -41,13 +42,16 @@ export function WorkflowCanvas() {
 
   const selectNode = useUIStore((s) => s.selectNode);
   const selectedStepNodeId = useExecutionStore((s) => s.selectedStepNodeId);
+  const lastFocusedExecutionNodeId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!selectedStepNodeId) return;
-    const node = nodes.find((item) => item.id === selectedStepNodeId);
-    if (!node) return;
-    const viewport = getViewport();
-    setCenter(node.position.x + 100, node.position.y + 30, { zoom: Math.min(1.25, Math.max(0.75, viewport.zoom)), duration: 250 });
+    lastFocusedExecutionNodeId.current = focusExecutionNode({
+      selectedNodeId: selectedStepNodeId,
+      lastFocusedNodeId: lastFocusedExecutionNodeId.current,
+      nodes,
+      getViewport,
+      setCenter,
+    });
   }, [selectedStepNodeId, nodes, setCenter, getViewport]);
 
   // ── Drag and drop from palette ────────────────────────────
