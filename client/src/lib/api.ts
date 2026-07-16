@@ -1,7 +1,7 @@
-import type { Workflow, ExecutionRun } from '@/types';
+import type { Workflow, ExecutionRun, GenerationMetadata } from '@/types';
 
-// All browser API traffic is same-origin. Next.js rewrites /api to the
-// server-only FLOWCRAFT_API_ORIGIN, so the session cookie remains first-party.
+// All browser API traffic is same-origin. The App Router proxy forwards /api
+// server-side, so the session cookie remains first-party.
 const BASE_URL = '/api';
 
 // ── Error type ──────────────────────────────────────────────
@@ -93,6 +93,7 @@ export async function createWorkflow(data: {
   nodes?: Workflow['nodes'];
   edges?: Workflow['edges'];
   isGeneratedByAI?: boolean;
+  generationMetadata?: GenerationMetadata;
 }): Promise<Workflow> {
   return request<Workflow>('/workflows', {
     method: 'POST',
@@ -108,6 +109,7 @@ export async function updateWorkflow(
     description?: string;
     nodes?: Workflow['nodes'];
     edges?: Workflow['edges'];
+    generationMetadata?: GenerationMetadata;
   },
 ): Promise<Workflow> {
   return request<Workflow>(`/workflows/${id}`, {
@@ -150,6 +152,7 @@ export async function generateWorkflow(prompt: string): Promise<{
   description?: string;
   nodes: Workflow['nodes'];
   edges: Workflow['edges'];
+  generationMetadata: GenerationMetadata;
 }> {
   return request(`/ai/generate`, {
     method: 'POST',

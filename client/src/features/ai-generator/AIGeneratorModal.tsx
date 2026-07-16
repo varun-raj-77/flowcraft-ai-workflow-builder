@@ -7,6 +7,7 @@ import { useWorkflowStore } from '@/stores/workflowStore';
 import { Button } from '@/components/ui/Button';
 import * as api from '@/lib/api';
 import type { Workflow } from '@/types';
+import type { CapabilityCoverage } from '@/types';
 
 const EXAMPLE_PROMPTS = [
   'Fetch users from an API, filter active users, and log the count',
@@ -24,6 +25,7 @@ export function AIGeneratorModal() {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [coverage, setCoverage] = useState<CapabilityCoverage | null>(null);
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || isGenerating) return;
@@ -33,6 +35,12 @@ export function AIGeneratorModal() {
 
     try {
       const result = await api.generateWorkflow(prompt.trim());
+      const resultCoverage = result.generationMetadata.capabilityCoverage;
+      if (!resultCoverage?.isComplete) {
+        setCoverage(resultCoverage ?? null);
+        setError('The generated graph does not completely satisfy this prompt. Revise the prompt or remove unsupported steps before loading it.');
+        return;
+      }
 
       // Build a full Workflow shape for the store
       const workflow: Workflow = {
@@ -43,6 +51,7 @@ export function AIGeneratorModal() {
         nodes: result.nodes,
         edges: result.edges,
         isGeneratedByAI: true,
+        generationMetadata: result.generationMetadata,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -70,6 +79,7 @@ export function AIGeneratorModal() {
   const handleExampleClick = useCallback((example: string) => {
     setPrompt(example);
     setError(null);
+    setCoverage(null);
   }, []);
 
   if (!isOpen) return null;
@@ -110,6 +120,7 @@ export function AIGeneratorModal() {
             onChange={(e) => {
               setPrompt(e.target.value);
               setError(null);
+              setCoverage(null);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -137,6 +148,12 @@ export function AIGeneratorModal() {
           {error && (
             <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-950/30">
               <p className="text-xs text-red-700 dark:text-red-400">{error}</p>
+            </div>
+          )}
+          {coverage && (
+            <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+              {coverage.unsupportedCapabilities.length > 0 && <p>Unsupported: {coverage.unsupportedCapabilities.join(', ')}</p>}
+              {coverage.missingCapabilities.length > 0 && <p>Missing: {coverage.missingCapabilities.join(', ')}</p>}
             </div>
           )}
 

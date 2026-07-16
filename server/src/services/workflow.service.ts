@@ -63,6 +63,7 @@ export async function createWorkflow(
     nodes: input.nodes,
     edges: input.edges,
     isGeneratedByAI: input.isGeneratedByAI,
+    generationMetadata: input.generationMetadata,
   });
 
   return workflow;
@@ -120,10 +121,15 @@ export async function updateWorkflow(
   if (input.description !== undefined) workflow.description = input.description;
   if (input.nodes !== undefined) workflow.nodes = input.nodes;
   if (input.edges !== undefined) workflow.edges = input.edges;
+  if (input.generationMetadata !== undefined) workflow.generationMetadata = {
+    ...input.generationMetadata,
+    generatedAt: new Date(input.generationMetadata.generatedAt),
+  };
 
   // Mark nodes/edges as modified since they're Mixed type
   if (input.nodes !== undefined) workflow.markModified('nodes');
   if (input.edges !== undefined) workflow.markModified('edges');
+  if (input.generationMetadata !== undefined) workflow.markModified('generationMetadata');
 
   await workflow.save();
   return workflow;
