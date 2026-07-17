@@ -8,9 +8,13 @@ import { useSaveWorkflow } from './hooks/useSaveWorkflow';
 import { useRunWorkflow } from './hooks/useRunWorkflow';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { GenerationPromptModal } from '@/features/ai-generator/GenerationPromptModal';
+import { validateWorkflowPreflight } from './workflowPreflight';
 
 function InlineNameEditor() {
   const meta = useWorkflowStore((s) => s.meta);
+  const nodes = useWorkflowStore((s) => s.nodes);
+  const edges = useWorkflowStore((s) => s.edges);
+  const selectNode = useUIStore((s) => s.selectNode);
   const updateMeta = useWorkflowStore((s) => s.updateMeta);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -69,6 +73,9 @@ export function CanvasToolbar() {
   const meta = useWorkflowStore((s) => s.meta);
   const openAIModal = useUIStore((s) => s.openAIModal);
   const [isGenerationPromptOpen, setGenerationPromptOpen] = useState(false);
+  const [showPreflight, setShowPreflight] = useState(false);
+  const findings = validateWorkflowPreflight(nodes, edges);
+  const errors = findings.filter((finding) => finding.severity === 'error');
 
   const { save, status } = useSaveWorkflow();
   const { run, isRunning } = useRunWorkflow();
@@ -121,7 +128,9 @@ export function CanvasToolbar() {
         >
           Run
         </Button>
+        <button type="button" onClick={() => setShowPreflight((current) => !current)} className={`rounded-md px-2 py-1 text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${errors.length ? 'bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-300' : findings.length ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'}`}>{errors.length ? `${errors.length} issues` : findings.length ? `${findings.length} warnings` : 'Ready'}</button>
       </div>
+      {showPreflight && <div className="absolute right-4 top-12 z-30 w-80 rounded-lg border border-zinc-200 bg-white p-3 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"><p className="text-xs font-semibold">Workflow Preflight</p>{findings.length === 0 ? <p className="mt-2 text-xs text-emerald-600">Ready to run.</p> : <ul className="mt-2 space-y-2">{findings.map((finding) => <li key={finding.id} className="flex gap-2 text-xs"><span className={finding.severity === 'error' ? 'text-red-600' : 'text-amber-600'}>{finding.severity === 'error' ? 'Error' : 'Warning'}</span><span className="flex-1">{finding.message}</span>{finding.nodeId && <button onClick={() => selectNode(finding.nodeId!)} className="text-blue-600 hover:underline">Focus</button>}</li>)}</ul>}</div>}
       <GenerationPromptModal isOpen={isGenerationPromptOpen} onClose={() => setGenerationPromptOpen(false)} />
     </div>
   );

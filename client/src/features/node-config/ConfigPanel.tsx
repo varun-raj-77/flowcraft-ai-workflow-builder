@@ -101,6 +101,8 @@ export function ConfigPanel() {
   const isOpen = useUIStore((s) => s.isConfigPanelOpen);
   const selectNode = useUIStore((s) => s.selectNode);
   const nodes = useWorkflowStore((s) => s.nodes);
+  const removeNode = useWorkflowStore((s) => s.removeNode);
+  const edges = useWorkflowStore((s) => s.edges);
 
   if (!isOpen || !selectedNodeId) return null;
 
@@ -136,6 +138,18 @@ export function ConfigPanel() {
         <p className="mt-2 font-mono text-[10px] text-zinc-400 dark:text-zinc-500">
           {node.id}
         </p>
+        <button
+          type="button"
+          onClick={() => {
+            const affected = edges.filter((edge) => edge.source === node.id || edge.target === node.id).length;
+            if ((node.data.nodeType === 'start' || node.data.nodeType === 'end' || affected > 1) && !window.confirm(`Delete ${node.data.label} and ${affected} affected connection(s)?`)) return;
+            removeNode(node.id);
+            selectNode(null);
+          }}
+          className="mt-3 rounded-md px-2 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-400 dark:hover:bg-red-950"
+        >
+          Delete node
+        </button>
       </div>
 
       {/* ── Form body ──────────────────────────────────────── */}

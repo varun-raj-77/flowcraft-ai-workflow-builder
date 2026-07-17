@@ -102,6 +102,7 @@ interface WorkflowState {
   edges: Edge[];
   meta: WorkflowMeta | null;
   isDirty: boolean;
+  undoStack: Array<{ nodes: Node<FlowNodeData>[]; edges: Edge[] }>;
 
   // React Flow change handlers — passed directly as props
   onNodesChange: OnNodesChange<Node<FlowNodeData>>;
@@ -111,8 +112,11 @@ interface WorkflowState {
   // Domain actions
   setWorkflow: (workflow: Workflow) => void;
   clearWorkflow: () => void;
-  addNode: (type: NodeType, position: { x: number; y: number }) => void;
+  addNode: (type: NodeType, position: { x: number; y: number }) => string;
   removeNode: (nodeId: string) => void;
+  removeNodeAndReconnect: (nodeId: string, connection: Connection) => void;
+  removeEdge: (edgeId: string) => void;
+  undo: () => void;
   updateNodeData: (nodeId: string, data: Partial<FlowNodeData>) => void;
   updateMeta: (updates: Partial<WorkflowMeta>) => void;
   applyGeneratedWorkflow: (workflow: Pick<Workflow, 'name' | 'description' | 'nodes' | 'edges' | 'generationMetadata'>) => void;
@@ -129,6 +133,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   edges: [],
   meta: null,
   isDirty: false,
+  undoStack: [],
 
   // ── React Flow change handlers ──────────────────────────────
   // These are called by React Flow on every interaction (drag, select, delete).
@@ -137,17 +142,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   onNodesChange: (changes) => {
     const persistsContent = changes.some((change) => change.type !== 'select' && change.type !== 'dimensions');
+    const removes = changes.some((change) => change.type === 'remove');
     set({
       nodes: applyNodeChanges(changes, get().nodes),
       isDirty: persistsContent || get().isDirty,
+      undoStack: removes ? [...get().undoStack, { nodes: get().nodes, edges: get().edges }].slice(-30) : get().undoStack,
     });
   },
 
   onEdgesChange: (changes) => {
     const persistsContent = changes.some((change) => change.type !== 'select');
+    const removes = changes.some((change) => change.type === 'remove');
     set({
       edges: applyEdgeChanges(changes, get().edges),
       isDirty: persistsContent || get().isDirty,
+      undoStack: removes ? [...get().undoStack, { nodes: get().nodes, edges: get().edges }].slice(-30) : get().undoStack,
     });
   },
 
@@ -172,6 +181,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({
       edges: addEdge(newEdge, get().edges),
       isDirty: true,
+      undoStack: [...get().undoStack, { nodes: get().nodes, edges: get().edges }].slice(-30),
     });
   },
 
@@ -189,10 +199,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         generationMetadata: workflow.generationMetadata,
       },
       isDirty: false,
+      undoStack: [],
     }),
 
   clearWorkflow: () =>
-    set({ nodes: [], edges: [], meta: null, isDirty: false }),
+    set({ nodes: [], edges: [], meta: null, isDirty: false, undoStack: [] }),
 
   addNode: (type, position) => {
     const id = generateId('node');
@@ -210,7 +221,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({
       nodes: [...get().nodes, newNode],
       isDirty: true,
+      undoStack: [...get().undoStack, { nodes: get().nodes, edges: get().edges }].slice(-30),
     });
+    return id;
   },
 
   removeNode: (nodeId) => {
@@ -219,8 +232,40 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       // Also remove any edges connected to this node
       edges: get().edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
       isDirty: true,
+      undoStack: [...get().undoStack, { nodes: get().nodes, edges: get().edges }].slice(-30),
     });
   },
+
+  removeNodeAndReconnect: (nodeId, connection) => {
+    const sourceNode = get().nodes.find((node) => node.id === connection.source);
+    const isCondition = sourceNode?.data.nodeType === 'condition';
+    const edge: Edge = {
+      ...connection,
+      id: generateId('edge'),
+      type: 'smoothstep',
+      animated: false,
+      label: isCondition ? connection.sourceHandle === 'condition_true' ? 'Yes' : 'No' : undefined,
+      data: isCondition ? { conditionBranch: connection.sourceHandle === 'condition_true' ? 'true' : 'false' } : undefined,
+    };
+    set({
+      nodes: get().nodes.filter((node) => node.id !== nodeId),
+      edges: [...get().edges.filter((item) => item.source !== nodeId && item.target !== nodeId), edge],
+      isDirty: true,
+      undoStack: [...get().undoStack, { nodes: get().nodes, edges: get().edges }].slice(-30),
+    });
+  },
+
+  removeEdge: (edgeId) => set({
+    edges: get().edges.filter((edge) => edge.id !== edgeId),
+    isDirty: true,
+    undoStack: [...get().undoStack, { nodes: get().nodes, edges: get().edges }].slice(-30),
+  }),
+
+  undo: () => set((state) => {
+    const snapshot = state.undoStack.at(-1);
+    if (!snapshot) return state;
+    return { nodes: snapshot.nodes, edges: snapshot.edges, isDirty: true, undoStack: state.undoStack.slice(0, -1) };
+  }),
 
   updateNodeData: (nodeId, dataUpdate) => {
     set({

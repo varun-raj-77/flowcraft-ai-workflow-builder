@@ -104,15 +104,43 @@ export function WorkflowCanvas() {
   // ── Keyboard shortcuts ────────────────────────────────────
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        useWorkflowStore.getState().undo();
+        return;
+      }
       if (event.key === 'Delete' || event.key === 'Backspace') {
         const selectedNodeId = useUIStore.getState().selectedNodeId;
         if (selectedNodeId) {
+          const incoming = useWorkflowStore.getState().edges.filter((edge) => edge.target === selectedNodeId);
+          const outgoing = useWorkflowStore.getState().edges.filter((edge) => edge.source === selectedNodeId);
+          const node = useWorkflowStore.getState().nodes.find((item) => item.id === selectedNodeId);
+          if (node?.data.nodeType === 'start' || node?.data.nodeType === 'end') {
+            window.alert(`Delete ${node.data.label}? This may make the workflow non-runnable.`);
+            return;
+          }
+          if (incoming.length === 1 && outgoing.length === 1) {
+            const shouldReconnect = window.confirm(`Deleting ${node?.data.label ?? 'this node'} will break its path. Reconnect the surrounding nodes?`);
+            if (!shouldReconnect) return;
+            const [before] = incoming;
+            const [after] = outgoing;
+            if (before.source !== after.target && isValidConnection({ source: before.source, target: after.target, sourceHandle: before.sourceHandle, targetHandle: after.targetHandle })) {
+              useWorkflowStore.getState().removeNodeAndReconnect(selectedNodeId, { source: before.source, target: after.target, sourceHandle: before.sourceHandle, targetHandle: after.targetHandle });
+              selectNode(null);
+              return;
+            }
+          } else if (incoming.length + outgoing.length > 1 && !window.confirm(`Delete ${node?.data.label ?? 'this node'} and ${incoming.length + outgoing.length} affected connection(s)?`)) return;
           useWorkflowStore.getState().removeNode(selectedNodeId);
           selectNode(null);
+        } else {
+          const selectedEdge = useWorkflowStore.getState().edges.find((edge) => edge.selected);
+          if (selectedEdge) useWorkflowStore.getState().removeEdge(selectedEdge.id);
         }
       }
     },
-    [selectNode],
+    [isValidConnection, selectNode],
   );
 
   return (

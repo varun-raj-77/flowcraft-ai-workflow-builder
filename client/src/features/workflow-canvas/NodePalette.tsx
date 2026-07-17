@@ -1,9 +1,12 @@
 'use client';
 
-import { type DragEvent } from 'react';
+import { useCallback, useRef, type DragEvent } from 'react';
+import { useReactFlow } from '@xyflow/react';
 import { PALETTE_NODE_TYPES, type NodeTypeInfo } from '@/lib/constants';
 import { DND_TRANSFER_TYPE } from './hooks/useDragAndDrop';
 import { cn } from '@/lib/utils';
+import { useWorkflowStore } from '@/stores/workflowStore';
+import { useUIStore } from '@/stores/uiStore';
 
 const colorMap: Record<string, string> = {
   emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -20,6 +23,18 @@ interface PaletteItemProps {
 }
 
 function PaletteItem({ info }: PaletteItemProps) {
+  const { screenToFlowPosition } = useReactFlow();
+  const addNode = useWorkflowStore((state) => state.addNode);
+  const selectNode = useUIStore((state) => state.selectNode);
+  const lastActivation = useRef(0);
+  const addAtViewportCenter = useCallback(() => {
+    const now = Date.now();
+    if (now - lastActivation.current < 250) return;
+    lastActivation.current = now;
+    const position = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    const nodeId = addNode(info.type, position);
+    selectNode(nodeId);
+  }, [addNode, info.type, screenToFlowPosition, selectNode]);
   function handleDragStart(event: DragEvent<HTMLDivElement>) {
     // Set the node type as transfer payload — the canvas onDrop reads this
     event.dataTransfer.setData(DND_TRANSFER_TYPE, info.type);
@@ -27,11 +42,15 @@ function PaletteItem({ info }: PaletteItemProps) {
   }
 
   return (
-    <div
+    <button
+      type="button"
       className="flex cursor-grab items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition-colors hover:border-zinc-300 active:cursor-grabbing dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600"
       draggable
       onDragStart={handleDragStart}
-      title={info.description}
+      onClick={addAtViewportCenter}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); addAtViewportCenter(); } }}
+      title={`${info.description}. Click to add to canvas or drag to position.`}
+      aria-label={`Add ${info.label} node`}
     >
       <span
         className={cn(
@@ -49,7 +68,7 @@ function PaletteItem({ info }: PaletteItemProps) {
           {info.description}
         </p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -70,7 +89,7 @@ export function NodePalette() {
 
       <div className="mt-auto border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
-          Drag a node onto the canvas to add it.
+          Click to add to canvas or drag to position.
         </p>
       </div>
     </aside>
