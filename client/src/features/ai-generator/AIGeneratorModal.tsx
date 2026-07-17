@@ -28,7 +28,7 @@ const GENERATION_STAGES = [
 export function AIGeneratorModal() {
   const isOpen = useUIStore((s) => s.isAIModalOpen);
   const closeModal = useUIStore((s) => s.closeAIModal);
-  const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
+  const applyGeneratedWorkflow = useWorkflowStore((s) => s.applyGeneratedWorkflow);
   const router = useRouter();
 
   const [prompt, setPrompt] = useState('');
@@ -76,10 +76,8 @@ export function AIGeneratorModal() {
         updatedAt: new Date().toISOString(),
       };
 
-      // Set the workflow in the store FIRST
-      setWorkflow(workflow);
-      // Mark as dirty so the editor knows it needs saving
-      useWorkflowStore.getState().setDirty();
+      // A complete generation is one atomic workflow-history entry.
+      applyGeneratedWorkflow(workflow);
       closeModal();
       setPrompt('');
 
@@ -94,7 +92,7 @@ export function AIGeneratorModal() {
     } finally {
       setIsGenerating(false);
     }
-  }, [prompt, isGenerating, setWorkflow, closeModal, router]);
+  }, [prompt, isGenerating, applyGeneratedWorkflow, closeModal, router]);
 
   const handleExampleClick = useCallback((example: string) => {
     setPrompt(example);

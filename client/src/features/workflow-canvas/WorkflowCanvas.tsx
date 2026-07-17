@@ -41,6 +41,9 @@ export function WorkflowCanvas() {
   const onConnect = useWorkflowStore((s) => s.onConnect);
 
   const selectNode = useUIStore((s) => s.selectNode);
+  const undoToast = useUIStore((s) => s.undoToast);
+  const showUndoToast = useUIStore((s) => s.showUndoToast);
+  const clearUndoToast = useUIStore((s) => s.clearUndoToast);
   const selectedStepNodeId = useExecutionStore((s) => s.selectedStepNodeId);
   const isRunning = useExecutionStore((s) => s.isRunning);
   const lastFocusedExecutionNodeId = useRef<string | null>(null);
@@ -106,11 +109,6 @@ export function WorkflowCanvas() {
     (event: React.KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-        event.preventDefault();
-        useWorkflowStore.getState().undo();
-        return;
-      }
       if (event.key === 'Delete' || event.key === 'Backspace') {
         const selectedNodeId = useUIStore.getState().selectedNodeId;
         if (selectedNodeId) {
@@ -128,23 +126,26 @@ export function WorkflowCanvas() {
             const [after] = outgoing;
             if (before.source !== after.target && isValidConnection({ source: before.source, target: after.target, sourceHandle: before.sourceHandle, targetHandle: after.targetHandle })) {
               useWorkflowStore.getState().removeNodeAndReconnect(selectedNodeId, { source: before.source, target: after.target, sourceHandle: before.sourceHandle, targetHandle: after.targetHandle });
+              showUndoToast('Node deleted — Undo');
               selectNode(null);
               return;
             }
           } else if (incoming.length + outgoing.length > 1 && !window.confirm(`Delete ${node?.data.label ?? 'this node'} and ${incoming.length + outgoing.length} affected connection(s)?`)) return;
           useWorkflowStore.getState().removeNode(selectedNodeId);
+          showUndoToast('Node deleted — Undo');
           selectNode(null);
         } else {
           const selectedEdge = useWorkflowStore.getState().edges.find((edge) => edge.selected);
-          if (selectedEdge) useWorkflowStore.getState().removeEdge(selectedEdge.id);
+          if (selectedEdge) { useWorkflowStore.getState().removeEdge(selectedEdge.id); showUndoToast('Edge deleted — Undo'); }
         }
       }
     },
-    [isValidConnection, selectNode],
+    [isValidConnection, selectNode, showUndoToast],
   );
 
   return (
     <div className="relative flex-1" onKeyDown={onKeyDown} tabIndex={0}>
+      {undoToast && <div role="status" className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white shadow-lg"><span>{undoToast}</span><button type="button" onClick={() => { useWorkflowStore.getState().undo(); clearUndoToast(); }} className="rounded px-1.5 py-0.5 font-semibold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">Undo</button><button type="button" aria-label="Dismiss undo notification" onClick={clearUndoToast}>×</button></div>}
       {nodes.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="rounded-2xl border border-dashed border-zinc-300 bg-white/90 px-6 py-5 text-center shadow-sm backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/90">

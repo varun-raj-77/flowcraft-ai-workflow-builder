@@ -16,5 +16,7 @@ describe('CanvasToolbar', () => {
     useUIStore.setState({ isAIModalOpen: false });
     render(<CanvasToolbar />);
     expect(screen.getByRole('button', { name: '1 issues' })).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Redo' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
