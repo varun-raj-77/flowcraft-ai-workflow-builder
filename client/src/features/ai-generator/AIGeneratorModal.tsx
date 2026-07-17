@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/stores/uiStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { Button } from '@/components/ui/Button';
+import { GenerationValidationFeedback } from './GenerationValidationFeedback';
 import * as api from '@/lib/api';
 import type { Workflow } from '@/types';
 import type { CapabilityCoverage } from '@/types';
@@ -58,7 +59,6 @@ export function AIGeneratorModal() {
       const resultCoverage = result.generationMetadata.capabilityCoverage;
       if (!resultCoverage?.isComplete) {
         setCoverage(resultCoverage ?? null);
-        setError('The generated graph does not completely satisfy this prompt. Revise the prompt or remove unsupported steps before loading it.');
         return;
       }
 
@@ -175,12 +175,7 @@ export function AIGeneratorModal() {
               <p className="text-xs text-red-700 dark:text-red-400">{error}</p>
             </div>
           )}
-          {coverage && (
-            <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-              {coverage.unsupportedCapabilities.length > 0 && <p>Unsupported: {coverage.unsupportedCapabilities.join(', ')}</p>}
-              {coverage.missingCapabilities.length > 0 && <p>Missing: {coverage.missingCapabilities.join(', ')}</p>}
-            </div>
-          )}
+          {coverage && !coverage.isComplete && <div className="mt-3"><GenerationValidationFeedback coverage={coverage} /></div>}
 
           {/* Example prompts */}
           {!isGenerating && (
