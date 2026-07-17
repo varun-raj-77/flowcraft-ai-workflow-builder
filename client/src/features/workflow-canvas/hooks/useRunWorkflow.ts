@@ -5,6 +5,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useSaveWorkflow } from './useSaveWorkflow';
 import { useExecutionSocket } from '@/features/execution-viewer/hooks/useExecutionSocket';
 import * as api from '@/lib/api';
+import { validateWorkflowPreflight } from '../workflowPreflight';
 
 export function useRunWorkflow() {
   const meta = useWorkflowStore((s) => s.meta);
@@ -30,6 +31,10 @@ export function useRunWorkflow() {
     pollRef.current = setInterval(async () => {
       try {
         const run = await api.getExecution(runId);
+        if (useWorkflowStore.getState().meta?._id !== run.workflowId) {
+          stopPolling();
+          return;
+        }
         setCurrentRun(run);
 
         if (run.status !== 'running') {
@@ -48,6 +53,12 @@ export function useRunWorkflow() {
     if (isRunning) return;
 
     try {
+      const preflight = validateWorkflowPreflight(useWorkflowStore.getState().nodes, useWorkflowStore.getState().edges);
+      const errors = preflight.filter((finding) => finding.severity === 'error');
+      if (errors.length) {
+        setLastError(`Workflow Preflight found ${errors.length} issue${errors.length === 1 ? '' : 's'}. Resolve them before running.`);
+        return;
+      }
       setLastError(null);
       let workflowId = meta?._id;
 

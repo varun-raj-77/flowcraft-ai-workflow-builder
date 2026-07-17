@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { getSocket } from '@/lib/socket';
 import { useExecutionStore } from '@/stores/executionStore';
+import { useWorkflowStore } from '@/stores/workflowStore';
 import * as api from '@/lib/api';
 import type { StepStatus, ExecutionStatus } from '@/types';
 
@@ -73,7 +74,9 @@ export function useExecutionSocket() {
         // (e.g. if the socket connected slightly late)
         try {
           const finalRun = await api.getExecution(runId);
-          setCurrentRun(finalRun);
+          if (currentRunId.current === runId && useWorkflowStore.getState().meta?._id === finalRun.workflowId) {
+            setCurrentRun(finalRun);
+          }
         } catch {
           // Fallback: just update the status
           setRunStatus(event.status);

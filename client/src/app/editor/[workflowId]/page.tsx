@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useUIStore } from '@/stores/uiStore';
+import { useExecutionStore } from '@/stores/executionStore';
 import { NodePalette } from '@/features/workflow-canvas/NodePalette';
 import { CanvasToolbar } from '@/features/workflow-canvas/CanvasToolbar';
 import { WorkflowCanvas } from '@/features/workflow-canvas/WorkflowCanvas';
@@ -31,7 +32,9 @@ export default function EditorPage() {
       setLoadError('');
 
       if (params.workflowId === 'new') {
-        // Don't clear if AI generation already loaded nodes into the store
+        // Generated graphs may be retained, but execution state is never shared.
+        useExecutionStore.getState().clearExecution();
+        useExecutionStore.getState().clearHistory();
         const currentNodes = useWorkflowStore.getState().nodes;
         if (currentNodes.length === 0) {
           clearWorkflow();
@@ -41,6 +44,8 @@ export default function EditorPage() {
       }
 
       try {
+        useExecutionStore.getState().clearExecution();
+        useExecutionStore.getState().clearHistory();
         const workflow = await api.getWorkflow(params.workflowId);
         setWorkflow(workflow);
         setLoadState('ready');

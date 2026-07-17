@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { WorkflowList } from '@/features/workflow-manager/WorkflowList';
 import { AIGeneratorModal } from '@/features/ai-generator/AIGeneratorModal';
 import { useUIStore } from '@/stores/uiStore';
+import { useWorkflowStore } from '@/stores/workflowStore';
+import { useExecutionStore } from '@/stores/executionStore';
 import * as api from '@/lib/api';
 import type { Workflow } from '@/types';
 
@@ -53,6 +55,11 @@ export default function DashboardPage() {
     setWorkflows((prev) => prev.filter((w) => w._id !== id));
     try {
       await api.deleteWorkflow(id);
+      if (useWorkflowStore.getState().meta?._id === id) useWorkflowStore.getState().clearWorkflow();
+      if (useExecutionStore.getState().currentRun?.workflowId === id || useExecutionStore.getState().historyWorkflowId === id) {
+        useExecutionStore.getState().clearExecution();
+        useExecutionStore.getState().clearHistory();
+      }
     } catch (err) {
       // Revert on failure
       fetchWorkflows();
