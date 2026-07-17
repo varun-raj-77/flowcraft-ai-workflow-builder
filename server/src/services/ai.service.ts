@@ -4,6 +4,7 @@ import { WORKFLOW_GENERATION_SYSTEM_PROMPT } from '../prompts/workflowGeneration
 import { createWorkflowSchema, validateNodeConfig, validateEdgeReferences, validateUniqueNodeIds, isValidDAG } from '../validators/workflow.validator';
 import { redactText } from '../utils/redact';
 import { assessCapabilityCoverage, type CapabilityCoverage } from './aiCapabilities';
+import { validateGeneratedWorkflowConsistency } from './aiConsistency';
 
 export interface GeneratedWorkflow {
   name: string;
@@ -81,6 +82,10 @@ export async function generateWorkflow(prompt: string): Promise<GeneratedWorkflo
     throw new AppError(422, 'AI_PARSE_FAILED', 'AI response could not be parsed as JSON. Try rephrasing your prompt.');
   }
   const workflow = validateGeneratedWorkflow(parsed);
+  const consistencyIssues = validateGeneratedWorkflowConsistency(workflow);
+  if (consistencyIssues.length > 0) {
+    throw new AppError(422, consistencyIssues[0].code, consistencyIssues[0].message);
+  }
   return {
     ...workflow,
     generationMetadata: {

@@ -1,4 +1,5 @@
 import type { NodeExecutor } from './types';
+import { createTransformDiagnostic, TransformExecutionError } from './transformDiagnostics';
 
 export const executeTransform: NodeExecutor = async ({ nodeId, config, context }) => {
   const code = String(config.transformCode || 'return input');
@@ -26,6 +27,6 @@ export const executeTransform: NodeExecutor = async ({ nodeId, config, context }
     return { output };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Transform execution failed: ${message}`);
+    throw new TransformExecutionError(createTransformDiagnostic(code, allOutputs, message));
   }
 };

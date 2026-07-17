@@ -103,6 +103,16 @@ describe('ExecutionPanel', () => {
     expect(screen.getByText(/Response metadata: HTTP 200 .* 2 items .* application\/json/)).toBeTruthy();
   });
 
+  it('renders structured transform diagnostics while older raw errors remain safe', () => {
+    useExecutionStore.setState({ currentRun: { ...liveRun, stepLogs: [{ nodeId: 'transform', nodeType: 'transform', nodeLabel: 'Transform Data', status: 'failed', error: 'Transform failed', diagnostic: { code: 'TRANSFORM_MISSING_INPUT_FIELD', message: 'Transform failed because input.api.data.body is unavailable.', originalError: "Cannot read properties of undefined (reading 'length')", nodeId: 'transform', nodeName: 'Transform Data', upstreamNodeId: 'api', upstreamNodeName: 'Fetch Data', referencedPath: 'input.api.data.body', availableFields: ['id', 'name'], suggestion: 'Use an available field.' } }] } });
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('button', { name: /Transform Data/i }));
+    expect(screen.getByText(/Referenced path:/i)).toBeTruthy();
+    expect(screen.getByText(/Fetch Data \(api\)/i)).toBeTruthy();
+    fireEvent.click(screen.getByText('Technical details'));
+    expect(screen.getByText(/Cannot read properties/i)).toBeTruthy();
+  });
+
   it('supports keyboard tab navigation', () => {
     render(<ExecutionPanel />);
     const liveTab = screen.getByRole('tab', { name: 'Live' });
