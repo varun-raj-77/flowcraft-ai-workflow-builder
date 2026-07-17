@@ -70,6 +70,10 @@ export function CanvasToolbar() {
   const meta = useWorkflowStore((s) => s.meta);
   const nodes = useWorkflowStore((s) => s.nodes);
   const edges = useWorkflowStore((s) => s.edges);
+  const undo = useWorkflowStore((s) => s.undo);
+  const redo = useWorkflowStore((s) => s.redo);
+  const canUndo = useWorkflowStore((s) => s.undoStack.length > 0);
+  const canRedo = useWorkflowStore((s) => s.redoStack.length > 0);
   const selectNode = useUIStore((s) => s.selectNode);
   const openAIModal = useUIStore((s) => s.openAIModal);
   const [isGenerationPromptOpen, setGenerationPromptOpen] = useState(false);
@@ -80,7 +84,7 @@ export function CanvasToolbar() {
   const { save, status } = useSaveWorkflow();
   const { run, isRunning } = useRunWorkflow();
 
-  useKeyboardShortcuts({ onSave: () => { void save().catch(() => undefined); } });
+  useKeyboardShortcuts({ onSave: () => { void save().catch(() => undefined); }, onUndo: undo, onRedo: redo });
 
   return (
     <div className="flex h-12 items-center justify-between border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-950">
@@ -106,6 +110,8 @@ export function CanvasToolbar() {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2">
+        <button type="button" onClick={undo} disabled={!canUndo} aria-label="Undo" title="Undo (Ctrl+Z)" className="rounded-md px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-800">↶</button>
+        <button type="button" onClick={redo} disabled={!canRedo} aria-label="Redo" title="Redo (Ctrl+Shift+Z)" className="rounded-md px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-800">↷</button>
         <Button variant="ghost" size="sm" onClick={openAIModal}>
           ✦ AI Generate
         </Button>
