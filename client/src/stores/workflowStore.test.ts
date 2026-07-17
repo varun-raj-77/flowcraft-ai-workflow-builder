@@ -25,4 +25,19 @@ describe('workflow dirty-state contract', () => {
     useWorkflowStore.getState().updateMeta({ generationMetadata: { originalPrompt: 'Changed prompt', generatedAt: '2026-01-01T00:00:00.000Z' } });
     expect(useWorkflowStore.getState().isDirty).toBe(true);
   });
+
+  it('does not replace the graph or metadata after an incomplete AI generation', () => {
+    useWorkflowStore.getState().setWorkflow(workflow);
+
+    useWorkflowStore.getState().applyGeneratedWorkflow({
+      name: 'Incomplete replacement',
+      nodes: [],
+      edges: [],
+      generationMetadata: { originalPrompt: 'Try again', generatedAt: '2026-01-01T00:00:00.000Z' },
+    });
+
+    expect(useWorkflowStore.getState().nodes).toHaveLength(1);
+    expect(useWorkflowStore.getState().meta?.name).toBe('Saved workflow');
+    expect(useWorkflowStore.getState().meta?.generationMetadata).toEqual(workflow.generationMetadata);
+  });
 });

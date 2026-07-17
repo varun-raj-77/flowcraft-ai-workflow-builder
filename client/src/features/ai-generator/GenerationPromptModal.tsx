@@ -32,15 +32,11 @@ export function GenerationPromptModal({ isOpen, onClose }: Props) {
   };
   const editPrompt = (value: string) => {
     setPrompt(value);
-    const originalPrompt = value.trim();
-    if (!originalPrompt) return;
-    const existing = meta.generationMetadata;
-    updateMeta({ generationMetadata: { originalPrompt, generatedAt: existing?.generatedAt ?? new Date().toISOString(), provider: existing?.provider, model: existing?.model, capabilityCoverage: existing?.capabilityCoverage } });
   };
   const regenerate = async () => {
     const originalPrompt = prompt.trim();
     if (!originalPrompt || isGenerating) return;
-    savePrompt(); setIsGenerating(true); setError(null); setCandidate(null);
+    setIsGenerating(true); setError(null); setCandidate(null);
     try {
       const generated = await api.generateWorkflow(originalPrompt);
       setCandidate(generated);

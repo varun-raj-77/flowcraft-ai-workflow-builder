@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import * as api from '@/lib/api';
+import { withNormalizedGenerationMetadata } from '@/lib/workflowSavePayload';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -24,23 +25,21 @@ export function useSaveWorkflow() {
       const edges = toWorkflowEdges();
 
       if (meta?._id) {
-        const saved = await api.updateWorkflow(meta._id, {
+        const saved = await api.updateWorkflow(meta._id, withNormalizedGenerationMetadata({
           name: meta.name,
           description: meta.description,
           nodes,
           edges,
-          generationMetadata: meta.generationMetadata,
-        });
+        }, meta.generationMetadata));
         setWorkflow(saved);
       } else {
-        const created = await api.createWorkflow({
+        const created = await api.createWorkflow(withNormalizedGenerationMetadata({
           name: meta?.name || 'Untitled Workflow',
           description: meta?.description,
           nodes,
           edges,
           isGeneratedByAI: meta?.isGeneratedByAI,
-          generationMetadata: meta?.generationMetadata,
-        });
+        }, meta?.generationMetadata));
         setWorkflow(created);
         router.replace(`/editor/${created._id}`);
       }
