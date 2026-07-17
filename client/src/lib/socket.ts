@@ -8,7 +8,10 @@ const LOCAL_SOCKET_URL = 'http://localhost:3001';
 // opaque ticket obtained through the same-origin API, not the browser JWT.
 export function getSocketUrl(environment: NodeJS.ProcessEnv = process.env): string {
   const configuredUrl = environment.NEXT_PUBLIC_SOCKET_URL?.trim();
-  const production = environment.NODE_ENV === 'production' || environment.VERCEL === '1';
+  // Localhost is an explicit development-only default. Any other runtime must
+  // provide the public Socket.IO endpoint instead of silently targeting a
+  // developer machine from a production browser.
+  const production = environment.NODE_ENV !== 'development' || environment.VERCEL === '1';
   if (!configuredUrl) {
     if (!production) return LOCAL_SOCKET_URL;
     throw new Error('NEXT_PUBLIC_SOCKET_URL must be configured to a public HTTPS Socket.IO origin in production.');

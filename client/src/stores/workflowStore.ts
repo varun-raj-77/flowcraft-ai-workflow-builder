@@ -12,6 +12,7 @@ import {
 import type { Workflow, WorkflowNode, WorkflowEdge, NodeType, FlowNodeData, GenerationMetadata } from '@/types';
 import { getDefaultConfig, getDefaultLabel } from '@/lib/defaultConfigs';
 import { generateId } from '@/lib/utils';
+import { hasCompleteGenerationMetadata } from '@/lib/workflowSavePayload';
 
 // ============================================================
 // Conversion between our domain types and React Flow's types
@@ -285,18 +286,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     })),
 
   applyGeneratedWorkflow: (workflow) =>
-    set((state) => ({
-      nodes: workflow.nodes.map(toFlowNode),
-      edges: workflow.edges.map(toFlowEdge),
-      meta: state.meta ? {
-        ...state.meta,
-        name: workflow.name,
-        description: workflow.description,
-        isGeneratedByAI: true,
-        generationMetadata: workflow.generationMetadata,
-      } : null,
-      isDirty: true,
-    })),
+    set((state) => {
+      if (!hasCompleteGenerationMetadata(workflow.generationMetadata)) return state;
+      return {
+        nodes: workflow.nodes.map(toFlowNode),
+        edges: workflow.edges.map(toFlowEdge),
+        meta: state.meta ? {
+          ...state.meta,
+          name: workflow.name,
+          description: workflow.description,
+          isGeneratedByAI: true,
+          generationMetadata: workflow.generationMetadata,
+        } : null,
+        isDirty: true,
+      };
+    }),
 
   markClean: () => set({ isDirty: false }),
 
