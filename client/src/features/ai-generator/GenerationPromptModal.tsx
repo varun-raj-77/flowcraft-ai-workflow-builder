@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import * as api from '@/lib/api';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import type { GenerationMetadata } from '@/types';
+import { GenerationValidationFeedback } from './GenerationValidationFeedback';
 
 interface Props { isOpen: boolean; onClose: () => void; }
 
@@ -40,7 +41,6 @@ export function GenerationPromptModal({ isOpen, onClose }: Props) {
     try {
       const generated = await api.generateWorkflow(originalPrompt);
       setCandidate(generated);
-      if (!generated.generationMetadata.capabilityCoverage?.isComplete) setError('This revision is incomplete and will not replace the current graph. Review the limitations and revise the prompt.');
     } catch (reason) { setError(api.getApiErrorMessage(reason, 'Generation failed. The current graph has not changed.')); }
     finally { setIsGenerating(false); }
   };
@@ -55,7 +55,8 @@ export function GenerationPromptModal({ isOpen, onClose }: Props) {
         <textarea value={prompt} onChange={(event) => editPrompt(event.target.value)} rows={7} maxLength={2000} className="w-full resize-y rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800" placeholder="Describe the workflow to generate" />
         <div className="flex justify-between text-[11px] text-zinc-500"><span>Prompt edits are saved with the workflow.</span><span>{prompt.length}/2000</span></div>
         {error && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">{error}</p>}
-        {coverage && <div className="rounded-md border border-zinc-200 p-3 text-xs dark:border-zinc-700"><p className="font-medium">Coverage: {Math.round(coverage.coverage * 100)}%</p>{coverage.unsupportedCapabilities.length > 0 && <p className="mt-1">Unsupported: {coverage.unsupportedCapabilities.join(', ')}</p>}{coverage.missingCapabilities.length > 0 && <p className="mt-1">Missing: {coverage.missingCapabilities.join(', ')}</p>}{coverage.isComplete && <p className="mt-1 text-emerald-600">Revision is ready. Confirm before replacing the graph.</p>}</div>}
+        {coverage && !coverage.isComplete && <GenerationValidationFeedback coverage={coverage} />}
+        {coverage?.isComplete && <div className="rounded-md border border-zinc-200 p-3 text-xs dark:border-zinc-700"><p className="font-medium">Coverage: {Math.round(coverage.coverage * 100)}%</p><p className="mt-1 text-emerald-600">Revision is ready. Confirm before replacing the graph.</p></div>}
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-700"><Button variant="ghost" size="sm" onClick={onClose}>Close</Button><Button variant="secondary" size="sm" onClick={savePrompt} disabled={!prompt.trim()}>Save Prompt</Button><Button variant="primary" size="sm" onClick={candidate?.generationMetadata.capabilityCoverage?.isComplete ? confirmReplacement : regenerate} isLoading={isGenerating} disabled={!prompt.trim()}>{candidate?.generationMetadata.capabilityCoverage?.isComplete ? 'Confirm Replace Graph' : 'Regenerate'}</Button></div>
     </div>
