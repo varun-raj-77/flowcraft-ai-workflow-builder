@@ -11,6 +11,7 @@ export interface IStepLog {
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
   error?: string;
+  diagnostic?: Record<string, unknown>;
 }
 
 export interface IExecutionRunDocument extends Document {
@@ -43,6 +44,7 @@ const stepLogSchema = new Schema<IStepLog>(
     input: Schema.Types.Mixed,
     output: Schema.Types.Mixed,
     error: String,
+    diagnostic: Schema.Types.Mixed,
   },
   { _id: false },
 );

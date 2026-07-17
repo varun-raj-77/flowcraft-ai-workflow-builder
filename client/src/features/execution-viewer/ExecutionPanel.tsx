@@ -7,7 +7,7 @@ import { useExecutionStore } from '@/stores/executionStore';
 import { NODE_TYPE_REGISTRY } from '@/lib/constants';
 import * as api from '@/lib/api';
 import { cn } from '@/lib/utils';
-import type { ExecutionRun, StepLog, StepStatus } from '@/types';
+import type { ExecutionRun, StepLog, StepStatus, TransformDiagnostic } from '@/types';
 import { JsonViewer } from './JsonViewer';
 import {
   INSPECTOR_TABS,
@@ -49,6 +49,17 @@ const TAB_LABELS: Record<InspectorTab, string> = {
 
 function SafeData({ value }: { value: unknown }) {
   return <JsonViewer value={value} />;
+}
+
+function TransformDiagnosticDetails({ diagnostic }: { diagnostic: TransformDiagnostic }) {
+  return <section className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[10px] dark:border-red-900/50 dark:bg-red-950/20" aria-label="Transform diagnostic">
+    <p className="font-semibold text-red-800 dark:text-red-200">{diagnostic.message}</p>
+    {diagnostic.referencedPath && <p className="mt-1"><span className="font-medium">Referenced path:</span> <code>{diagnostic.referencedPath}</code></p>}
+    {diagnostic.upstreamNodeId && <p className="mt-1"><span className="font-medium">Previous node:</span> {diagnostic.upstreamNodeName ?? diagnostic.upstreamNodeId} ({diagnostic.upstreamNodeId})</p>}
+    {diagnostic.availableFields.length > 0 && <p className="mt-1"><span className="font-medium">Available fields:</span> {diagnostic.availableFields.join(', ')}</p>}
+    <p className="mt-1"><span className="font-medium">Suggested action:</span> {diagnostic.suggestion}</p>
+    <details className="mt-2"><summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">Technical details</summary><p className="mt-1 break-words">{redactInspectionValue(diagnostic.originalError) as string}</p></details>
+  </section>;
 }
 
 function ResponseMetadata({ output, durationMs }: { output: Record<string, unknown>; durationMs?: number }) {
@@ -155,7 +166,7 @@ function StepLogRow({ log }: { log: StepLog }) {
           {log.error && (
             <div>
               <p className="text-[10px] font-medium text-red-600 dark:text-red-400">Error</p>
-              <SafeData value={log.error} />
+              {log.diagnostic ? <TransformDiagnosticDetails diagnostic={log.diagnostic} /> : <SafeData value={log.error} />}
             </div>
           )}
           {log.output && (

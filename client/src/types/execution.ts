@@ -3,6 +3,19 @@ import type { NodeType } from './workflow';
 export type ExecutionStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 export type StepStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped';
 
+export interface TransformDiagnostic {
+  code: 'TRANSFORM_MISSING_INPUT_FIELD';
+  message: string;
+  originalError: string;
+  nodeId?: string;
+  nodeName?: string;
+  upstreamNodeId?: string;
+  upstreamNodeName?: string;
+  referencedPath?: string;
+  availableFields: string[];
+  suggestion: string;
+}
+
 export interface StepLog {
   nodeId: string;
   nodeType: NodeType;
@@ -14,6 +27,7 @@ export interface StepLog {
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
   error?: string;
+  diagnostic?: TransformDiagnostic;
 }
 
 export interface ExecutionRun {

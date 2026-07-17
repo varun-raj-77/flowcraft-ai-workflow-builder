@@ -23,4 +23,5 @@ export type {
   StepStatus,
   StepLog,
   ExecutionRun,
+  TransformDiagnostic,
 } from './execution';

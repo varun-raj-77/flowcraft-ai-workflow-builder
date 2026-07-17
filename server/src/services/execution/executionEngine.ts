@@ -10,6 +10,7 @@ import { type ExecutionContext, truncateOutput } from './templateEngine';
 import { getExecutor } from './executors';
 import { getIO } from '../../config/socket';
 import { redactText } from '../../utils/redact';
+import { TransformExecutionError } from './executors/transformDiagnostics';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -215,15 +216,23 @@ export async function runExecution(
       } catch (err: unknown) {
         // ── Record failure ──────────────────────────────
         const now = new Date();
-        const message = redactText(err instanceof Error ? err.message : String(err));
+        const transformDiagnostic = err instanceof TransformExecutionError ? {
+          ...err.diagnostic,
+          originalError: redactText(err.diagnostic.originalError),
+          nodeId,
+          nodeName: node.label,
+          upstreamNodeName: err.diagnostic.upstreamNodeId ? nodeMap.get(err.diagnostic.upstreamNodeId)?.label : undefined,
+        } : undefined;
+        const message = transformDiagnostic?.message ?? redactText(err instanceof Error ? err.message : String(err));
 
         run.stepLogs[logIndex].status = 'failed';
         run.stepLogs[logIndex].completedAt = now;
         run.stepLogs[logIndex].durationMs =
           now.getTime() - run.stepLogs[logIndex].startedAt!.getTime();
         run.stepLogs[logIndex].error = message;
+        if (transformDiagnostic) run.stepLogs[logIndex].diagnostic = transformDiagnostic;
 
-        emitNodeStatus(run._id.toString(), nodeId, 'failed', { error: message });
+        emitNodeStatus(run._id.toString(), nodeId, 'failed', { error: message, diagnostic: transformDiagnostic });
 
         // Mark all remaining nodes as skipped
         const remaining = executionOrder.slice(executionOrder.indexOf(nodeId) + 1);
