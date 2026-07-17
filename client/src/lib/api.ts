@@ -1,4 +1,4 @@
-import type { Workflow, ExecutionRun, GenerationMetadata } from '@/types';
+import type { Workflow, WorkflowSummary, ExecutionRun, GenerationMetadata } from '@/types';
 
 // All browser API traffic is same-origin. The App Router proxy forwards /api
 // server-side, so the session cookie remains first-party.
@@ -77,8 +77,8 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
 // ── Workflow endpoints ──────────────────────────────────────
 
 /** List all workflows (no nodes/edges — lightweight for dashboard). */
-export async function listWorkflows(): Promise<Workflow[]> {
-  return request<Workflow[]>('/workflows');
+export async function listWorkflows(): Promise<WorkflowSummary[]> {
+  return request<WorkflowSummary[]>('/workflows');
 }
 
 /** Get a single workflow with full graph data. */

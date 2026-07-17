@@ -1,12 +1,12 @@
 'use client';
 
-import type { Workflow } from '@/types';
+import type { WorkflowSummary } from '@/types';
 import { WorkflowCard } from './WorkflowCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 
 interface WorkflowListProps {
-  workflows: Workflow[];
+  workflows: WorkflowSummary[];
   onDelete: (id: string) => void;
   onCreate: () => void;
 }

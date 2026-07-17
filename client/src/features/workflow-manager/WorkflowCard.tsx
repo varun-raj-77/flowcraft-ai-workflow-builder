@@ -1,26 +1,24 @@
 'use client';
 
+import React from 'react';
 import Link from 'next/link';
-import type { Workflow } from '@/types';
+import type { WorkflowSummary } from '@/types';
 import { formatDate } from '@/lib/utils';
-import { NODE_TYPE_REGISTRY } from '@/lib/constants';
 
 interface WorkflowCardProps {
-  workflow: Workflow;
+  workflow: WorkflowSummary;
   onDelete: (id: string) => void;
 }
 
 export function WorkflowCard({ workflow, onDelete }: WorkflowCardProps) {
   const promptPreview = workflow.generationMetadata?.originalPrompt;
-  const nodeCount = workflow.nodes?.length ?? 0;
-  const lastExecutionStatus = (workflow as Workflow & { lastExecutionStatus?: 'completed' | 'failed' | 'running' | 'cancelled' }).lastExecutionStatus;
-  // Count nodes by type for the summary chips
-  // Note: nodes may be undefined when loaded from the list endpoint
-  // (which excludes nodes/edges for performance)
-  const typeCounts = (workflow.nodes || []).reduce<Record<string, number>>((acc, node) => {
-    acc[node.type] = (acc[node.type] || 0) + 1;
-    return acc;
-  }, {});
+  const nodeCount = workflow.nodeCount;
+  const lastExecutionStatus = workflow.lastExecutionStatus;
+  const statusLabel = lastExecutionStatus === null
+    ? 'Never run'
+    : lastExecutionStatus === undefined
+      ? 'Execution status unavailable'
+      : `Last run: ${lastExecutionStatus[0].toUpperCase()}${lastExecutionStatus.slice(1)}`;
 
   return (
     <Link
@@ -52,24 +50,8 @@ export function WorkflowCard({ workflow, onDelete }: WorkflowCardProps) {
       </div>
 
       <div className="mb-4 flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 text-[11px] dark:bg-zinc-800/70">
-        <span className="font-medium text-zinc-600 dark:text-zinc-300">{nodeCount} {nodeCount === 1 ? 'node' : 'nodes'}</span>
-        <span className={lastExecutionStatus === 'failed' ? 'text-red-600 dark:text-red-400' : lastExecutionStatus === 'completed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400'}>{lastExecutionStatus ? `Last run: ${lastExecutionStatus}` : 'Execution status unavailable'}</span>
-      </div>
-
-      {/* Node type summary */}
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {Object.entries(typeCounts).map(([type, count]) => {
-          const info = NODE_TYPE_REGISTRY[type as keyof typeof NODE_TYPE_REGISTRY];
-          return (
-            <span
-              key={type}
-              className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-            >
-              <span>{info?.icon}</span>
-              {count}
-            </span>
-          );
-        })}
+        <span className="font-medium text-zinc-600 dark:text-zinc-300">{nodeCount === undefined ? 'Node count unavailable' : `${nodeCount} ${nodeCount === 1 ? 'node' : 'nodes'}`}</span>
+        <span className={lastExecutionStatus === 'failed' ? 'text-red-600 dark:text-red-400' : lastExecutionStatus === 'completed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400'}>{statusLabel}</span>
       </div>
 
       {/* Footer */}

@@ -107,6 +107,20 @@ export interface Workflow {
   updatedAt: string;
 }
 
+/** Lightweight dashboard response; graph arrays are intentionally omitted. */
+export interface WorkflowSummary {
+  _id: string;
+  userId: string;
+  name: string;
+  description?: string;
+  isGeneratedByAI: boolean;
+  generationMetadata?: GenerationMetadata;
+  createdAt: string;
+  updatedAt: string;
+  nodeCount?: number;
+  lastExecutionStatus?: 'running' | 'completed' | 'failed' | 'cancelled' | null;
+}
+
 export interface CapabilityCoverage {
   requestedCapabilities: string[];
   implementedCapabilities: string[];

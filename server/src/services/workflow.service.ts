@@ -1,4 +1,5 @@
 import { Workflow, type IWorkflowDocument } from '../models/Workflow.model';
+import { ExecutionRun } from '../models/ExecutionRun.model';
 import { AppError } from '../middleware/errorHandler.middleware';
 import {
   type CreateWorkflowInput,
@@ -83,6 +84,32 @@ export async function getWorkflowById(
 }
 
 export async function listWorkflows(
+  userId: string,
+): Promise<Array<Record<string, unknown>>> {
+  // Keep the dashboard compact while deriving summaries at the database layer.
+  return Workflow.aggregate([
+    { $match: { userId } },
+    { $sort: { updatedAt: -1 } },
+    { $project: { userId: 1, name: 1, description: 1, isGeneratedByAI: 1, generationMetadata: 1, createdAt: 1, updatedAt: 1, nodeCount: { $size: { $ifNull: ['$nodes', []] } } } },
+    {
+      $lookup: {
+        from: ExecutionRun.collection.name,
+        let: { workflowId: '$_id', workflowUserId: '$userId' },
+        pipeline: [
+          { $match: { $expr: { $and: [{ $eq: ['$workflowId', '$$workflowId'] }, { $eq: ['$userId', '$$workflowUserId'] }] } } },
+          { $sort: { createdAt: -1 } },
+          { $limit: 1 },
+          { $project: { _id: 0, status: 1 } },
+        ],
+        as: 'latestRun',
+      },
+    },
+    { $set: { lastExecutionStatus: { $ifNull: [{ $arrayElemAt: ['$latestRun.status', 0] }, null] } } },
+    { $project: { latestRun: 0 } },
+  ]);
+}
+
+export async function listWorkflowDocuments(
   userId: string,
 ): Promise<IWorkflowDocument[]> {
   const workflows = await Workflow
