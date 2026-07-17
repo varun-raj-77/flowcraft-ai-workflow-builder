@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useUIStore } from '@/stores/uiStore';
 import { Button } from '@/components/ui/Button';
@@ -12,9 +12,6 @@ import { validateWorkflowPreflight } from './workflowPreflight';
 
 function InlineNameEditor() {
   const meta = useWorkflowStore((s) => s.meta);
-  const nodes = useWorkflowStore((s) => s.nodes);
-  const edges = useWorkflowStore((s) => s.edges);
-  const selectNode = useUIStore((s) => s.selectNode);
   const updateMeta = useWorkflowStore((s) => s.updateMeta);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -71,6 +68,9 @@ function InlineNameEditor() {
 export function CanvasToolbar() {
   const isDirty = useWorkflowStore((s) => s.isDirty);
   const meta = useWorkflowStore((s) => s.meta);
+  const nodes = useWorkflowStore((s) => s.nodes);
+  const edges = useWorkflowStore((s) => s.edges);
+  const selectNode = useUIStore((s) => s.selectNode);
   const openAIModal = useUIStore((s) => s.openAIModal);
   const [isGenerationPromptOpen, setGenerationPromptOpen] = useState(false);
   const [showPreflight, setShowPreflight] = useState(false);
