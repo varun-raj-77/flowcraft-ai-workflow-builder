@@ -10,12 +10,12 @@ import { useUIStore } from '@/stores/uiStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import * as api from '@/lib/api';
-import type { Workflow } from '@/types';
+import type { WorkflowSummary } from '@/types';
 
 export default function DashboardPage() {
   const router = useRouter();
   const openAIModal = useUIStore((s) => s.openAIModal);
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
