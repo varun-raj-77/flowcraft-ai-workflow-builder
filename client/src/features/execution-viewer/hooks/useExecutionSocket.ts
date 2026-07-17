@@ -35,24 +35,25 @@ export function useExecutionSocket() {
   const setRunStatus = useExecutionStore((s) => s.setRunStatus);
   const setCurrentRun = useExecutionStore((s) => s.setCurrentRun);
   const currentRunId = useRef<string | null>(null);
+  const prepareSocket = useCallback(() => getSocket(), []);
 
   // Clean up previous room
   const leaveCurrentRoom = useCallback(() => {
     if (currentRunId.current) {
-      const socket = getSocket();
+      const socket = prepareSocket();
       socket.emit('leave:execution', currentRunId.current);
       socket.off('node:status');
       socket.off('execution:complete');
       currentRunId.current = null;
     }
-  }, []);
+  }, [prepareSocket]);
 
   // Join a new run room and start listening
   const joinRun = useCallback(
     (runId: string) => {
       leaveCurrentRoom();
 
-      const socket = getSocket();
+      const socket = prepareSocket();
       currentRunId.current = runId;
 
       socket.emit('join:execution', runId);
@@ -83,7 +84,7 @@ export function useExecutionSocket() {
         }
       });
     },
-    [leaveCurrentRoom, updateNodeStatus, setRunStatus, setCurrentRun],
+    [leaveCurrentRoom, prepareSocket, updateNodeStatus, setRunStatus, setCurrentRun],
   );
 
   // Clean up on unmount
@@ -93,5 +94,5 @@ export function useExecutionSocket() {
     };
   }, [leaveCurrentRoom]);
 
-  return { joinRun, leaveCurrentRoom };
+  return { joinRun, leaveCurrentRoom, prepareSocket };
 }

@@ -188,6 +188,22 @@ JWT_SECRET=your_secret
 ANTHROPIC_API_KEY=optional
 ```
 
+### Vercel Socket.IO configuration
+
+The App Router `/api` proxy forwards REST requests only; it does not proxy Socket.IO WebSocket upgrades. Configure one public backend origin in Vercel for both **Production** and **Preview**, then redeploy the affected environment:
+
+```env
+# Preferred explicit Socket.IO endpoint; origin only, no /socket.io path
+NEXT_PUBLIC_SOCKET_URL=https://your-railway-service.up.railway.app
+
+# Optional fallback when the same public backend serves REST and Socket.IO
+NEXT_PUBLIC_API_URL=https://your-railway-service.up.railway.app
+```
+
+`NEXT_PUBLIC_*` values are embedded in the browser bundle at build time. Adding or changing either value requires a new Vercel deployment; editing the environment after deployment does not update existing client bundles.
+
+On Railway, include the Vercel Production and Preview origins in `TRUSTED_ORIGINS` so the Socket.IO server accepts those browser origins.
+
 ---
 
 ## API Reference

@@ -13,7 +13,9 @@ let io: SocketServer | null = null;
 export function initializeSocket(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
     cors: {
-      origin: env.CLIENT_URL,
+      // Match the API's allowlist so configured Vercel preview origins can
+      // establish the separate public Socket.IO connection as well.
+      origin: env.TRUSTED_ORIGINS,
       credentials: false,
     },
   });

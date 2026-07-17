@@ -14,7 +14,7 @@ export function useRunWorkflow() {
   const setLastError = useExecutionStore((s) => s.setLastError);
   const isRunning = useExecutionStore((s) => s.isRunning);
   const { save } = useSaveWorkflow();
-  const { joinRun } = useExecutionSocket();
+  const { joinRun, prepareSocket } = useExecutionSocket();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -71,6 +71,10 @@ export function useRunWorkflow() {
         throw new Error('Save the workflow before running it.');
       }
 
+      // Validate the live-update endpoint before creating a run. This keeps a
+      // configuration failure from leaving a new run displayed as pending.
+      prepareSocket();
+
       // Open the execution panel only after persistence succeeds.
       const uiState = useUIStore.getState();
       if (!uiState.isExecutionPanelOpen) {
@@ -89,7 +93,7 @@ export function useRunWorkflow() {
       console.error('[run] Execution failed:', err);
       setLastError(api.getApiErrorMessage(err, 'Unable to run this workflow. Please try again.'));
     }
-  }, [meta, isDirty, isRunning, save, setCurrentRun, setLastError, joinRun, startPolling]);
+  }, [meta, isDirty, isRunning, save, setCurrentRun, setLastError, joinRun, prepareSocket, startPolling]);
 
   return { run, isRunning };
 }
