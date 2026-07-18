@@ -186,7 +186,18 @@ MONGODB_URI=your_db_uri
 CLIENT_URL=http://localhost:3000
 JWT_SECRET=your_secret
 ANTHROPIC_API_KEY=optional
+DEMO_ACCOUNT_EMAIL=demo@flowcraft.app
 ```
+
+### Demo workspace setup
+
+FlowCraft does not seed or reset production data at application startup. Set `DEMO_ACCOUNT_EMAIL`, then:
+
+1. Register `demo@flowcraft.app` through the normal registration flow and set its dedicated public demo password.
+2. Confirm the account has no privileged role. The current API exposes no email, password, security-profile, or account-deletion mutation routes.
+3. Add only harmless JSONPlaceholder workflows without authorization headers, private URLs, API keys, or personal data.
+4. Run the samples after deployment to create execution history for Timeline, Variables, Replay, and diagnostics.
+5. Verify public login from an Incognito browser. Shared edits are visible to other visitors and are not reset automatically.
 
 ### Vercel Socket.IO configuration
 

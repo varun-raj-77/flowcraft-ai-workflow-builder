@@ -13,10 +13,11 @@ interface Environment {
   JWT_SECRET: string;
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_MODEL: string;
+  DEMO_ACCOUNT_EMAIL: string;
 }
 
 function loadEnv(): Environment {
-  const { PORT, NODE_ENV, MONGODB_URI, CLIENT_URL, TRUSTED_ORIGINS, JWT_SECRET, ANTHROPIC_API_KEY, ANTHROPIC_MODEL } = process.env;
+  const { PORT, NODE_ENV, MONGODB_URI, CLIENT_URL, TRUSTED_ORIGINS, JWT_SECRET, ANTHROPIC_API_KEY, ANTHROPIC_MODEL, DEMO_ACCOUNT_EMAIL } = process.env;
 
   if (!MONGODB_URI) {
     throw new Error('MONGODB_URI is required in environment variables');
@@ -37,6 +38,7 @@ function loadEnv(): Environment {
     JWT_SECRET: JWT_SECRET || 'dev-secret-change-in-production',
     ANTHROPIC_API_KEY,
     ANTHROPIC_MODEL: ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
+    DEMO_ACCOUNT_EMAIL: (DEMO_ACCOUNT_EMAIL || 'demo@flowcraft.app').trim().toLowerCase(),
   };
 }
 
