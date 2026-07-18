@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, getMe } from './api';
+import { ApiError, changePassword, getMe } from './api';
 
 describe('shared API client', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -26,5 +26,21 @@ describe('shared API client', () => {
     )));
 
     await expect(getMe()).rejects.toEqual(new ApiError(401, 'MISSING_TOKEN', 'Authentication required'));
+  });
+
+  it('changes the current user password through the authenticated same-origin endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ data: { success: true, message: 'Password changed successfully.' } }),
+      { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await changePassword({ currentPassword: 'current-password', newPassword: 'new-password' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/change-password', expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify({ currentPassword: 'current-password', newPassword: 'new-password' }),
+    }));
   });
 });

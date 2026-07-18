@@ -7,6 +7,7 @@ interface User {
   _id: string;
   email: string;
   displayName: string;
+  isDemoAccount: boolean;
 }
 
 interface AuthState {
@@ -17,6 +18,7 @@ interface AuthState {
   checkAuth: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<api.ChangePasswordResult>;
   logout: () => Promise<void>;
 }
 
@@ -79,6 +81,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       throw error;
     }
   },
+
+  changePassword: (currentPassword, newPassword) => api.changePassword({ currentPassword, newPassword }),
 
   logout: async () => {
     ++authOperation;
