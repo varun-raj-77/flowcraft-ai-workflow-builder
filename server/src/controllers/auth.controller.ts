@@ -3,6 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import * as authService from '../services/auth.service';
 import * as socketTicketService from '../services/socketTicket.service';
 import { env } from '../config/environment';
+import { isDemoAccountEmail } from '../utils/demoAccount';
 
 const COOKIE_OPTIONS = {
   httpOnly: true,
@@ -48,7 +49,22 @@ export const logout = asyncHandler(async (_req: Request, res: Response) => {
 
 export const getMe = asyncHandler(async (req: Request, res: Response) => {
   const user = await authService.getMe(req.userId!);
-  res.json({ data: user });
+  res.json({
+    data: {
+      ...user.toJSON(),
+      isDemoAccount: isDemoAccountEmail(user.email),
+    },
+  });
+});
+
+export const changePassword = asyncHandler(async (req: Request, res: Response) => {
+  await authService.changePassword(req.userId!, req.body);
+  res.json({
+    data: {
+      success: true,
+      message: 'Password changed successfully.',
+    },
+  });
 });
 
 /** Creates a one-time, 60-second credential for the direct Socket.IO handshake. */

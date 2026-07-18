@@ -53,12 +53,14 @@ export function Navbar() {
         {/* Right: User */}
         {user && (
           <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              {user.displayName}
-            </span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-200 text-xs font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
-              {user.displayName.charAt(0).toUpperCase()}
-            </div>
+            <Link href="/account" aria-label="Account settings" className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800">
+              <span className="hidden text-xs text-zinc-500 dark:text-zinc-400 sm:inline">
+                {user.displayName}
+              </span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-200 text-xs font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
+                {user.displayName.charAt(0).toUpperCase()}
+              </span>
+            </Link>
             <button
               onClick={() => useAuthStore.getState().logout()}
               className="rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"

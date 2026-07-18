@@ -82,6 +82,11 @@ JWT-based auth with httpOnly cookies:
 
 * Secure session handling
 * Workflow isolation per user
+* Authenticated password changes from **Account / Account Security**
+
+Password changes require the current password and a new password of at least six characters. A successful change preserves the current authenticated session; users can sign out and use the new password on their next login. The shared demo account cannot change its password.
+
+The endpoint is limited to five attempts per IP every 15 minutes using the existing in-process limiter. This limiter is suitable for the current single-service deployment but requires a shared store before horizontally scaling. FlowCraft does not currently provide global session revocation, so changing a password does not invalidate other existing sessions.
 
 ---
 
@@ -194,7 +199,7 @@ DEMO_ACCOUNT_EMAIL=demo@flowcraft.app
 FlowCraft does not seed or reset production data at application startup. Set `DEMO_ACCOUNT_EMAIL`, then:
 
 1. Register `demo@flowcraft.app` through the normal registration flow and set its dedicated public demo password.
-2. Confirm the account has no privileged role. The current API exposes no email, password, security-profile, or account-deletion mutation routes.
+2. Confirm the account has no privileged role. The password-change API rejects the configured demo account; the current API exposes no email, security-profile, or account-deletion mutation routes.
 3. Add only harmless JSONPlaceholder workflows without authorization headers, private URLs, API keys, or personal data.
 4. Run the samples after deployment to create execution history for Timeline, Variables, Replay, and diagnostics.
 5. Verify public login from an Incognito browser. Shared edits are visible to other visitors and are not reset automatically.
@@ -223,6 +228,7 @@ On Railway, include the Vercel Production and Preview origins in `TRUSTED_ORIGIN
 | ------ | ----------------------- | --------------- |
 | POST   | /api/auth/register      | Register        |
 | POST   | /api/auth/login         | Login           |
+| POST   | /api/auth/change-password | Change current user's password |
 | GET    | /api/workflows          | Get workflows   |
 | POST   | /api/workflows          | Create workflow |
 | POST   | /api/executions/:id/run | Run workflow    |

@@ -168,6 +168,15 @@ interface AuthUser {
   displayName: string;
 }
 
+interface SessionUser extends AuthUser {
+  isDemoAccount: boolean;
+}
+
+export interface ChangePasswordResult {
+  success: true;
+  message: string;
+}
+
 export async function register(data: {
   email: string;
   password: string;
@@ -193,8 +202,18 @@ export async function logout(): Promise<void> {
   return request<void>('/auth/logout', { method: 'POST' });
 }
 
-export async function getMe(): Promise<AuthUser> {
-  return request<AuthUser>('/auth/me');
+export async function getMe(): Promise<SessionUser> {
+  return request<SessionUser>('/auth/me');
+}
+
+export async function changePassword(data: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<ChangePasswordResult> {
+  return request<ChangePasswordResult>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 /** One-time socket credential; this is deliberately not the JWT. */
