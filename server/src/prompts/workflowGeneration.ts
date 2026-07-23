@@ -53,8 +53,11 @@ Return ONLY valid JSON with this exact structure:
 7. Runtime output contract: input.<nodeId> is the complete upstream result, prev is the most recent complete result, and nodes is an alias of input. API Call results are always { status, data, headers }; the response payload is input.<apiNodeId>.data. Transform and Condition nodes receive this same contract. Templates traverse the same result, for example {{node_1.data.length}} or {{node_1.status}}.
 8. Before calling forEach, filter, map, reduce, some, find, or another collection method on API data, assign the payload, verify it with Array.isArray, and throw a clear static error naming the API node if it is not an array. Never include payload values, headers, credentials, or tokens in that error. Example: const issues = input.node_1?.data; if (!Array.isArray(issues)) { throw new Error('Expected an array from "Fetch Issues".'); } return issues.filter((issue) => issue.state === 'open');
 9. Never call collection methods directly on input.<apiNodeId>; that value is the complete API result wrapper, not the response payload.
-10. Use a placeholder URL only when the user did not specify a real integration. Never label a generic sample API as a customer or enrichment API.
-11. Return ONLY the JSON object. No markdown fences, no explanation, no commentary.
+10. Credential model: API headers are persisted literal user-editable strings. FlowCraft does not resolve secrets, environment variables, or credential placeholders in workflow headers. {{...}} references only prior node outputs. Never generate an Authorization value, token, username, password, API key, or unsupported placeholder such as {{secrets.TOKEN}}.
+11. Never claim an authenticated-user, private-account, or private-repository API workflow is anonymously executable. GitHub's GET https://api.github.com/issues endpoint requires authentication and must not be generated. The server will reject authenticated intent with guidance rather than applying a broken workflow.
+12. When the user names a public GitHub owner/repository, use the public repository endpoint https://api.github.com/repos/{owner}/{repository}/issues?state=open. Keep the owner and repository exactly as provided; never invent either value. Public access remains subject to provider rate limits.
+13. Use a placeholder URL only when the user did not specify a real integration. Never label a generic sample API as a customer or enrichment API.
+14. Return ONLY the JSON object. No markdown fences, no explanation, no commentary.
 
 ## Examples
 
