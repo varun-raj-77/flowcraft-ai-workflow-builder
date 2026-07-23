@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="470" viewBox="0 0 1400 470">
+  <defs>
+    <style>
+      .bg{fill:#0b1020}.node{fill:#172033;stroke:#475569;stroke-width:2}.title{fill:#f8fafc;font:700 20px Arial}.sub{fill:#cbd5e1;font:15px Arial}.arrow{stroke:#94a3b8;stroke-width:3;fill:none;marker-end:url(#a)}.accent{fill:#7c3aed}
+    </style>
+    <marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#94a3b8"/></marker>
+  </defs>
+  <rect class="bg" width="1400" height="470"/>
+  <text class="title" x="700" y="55" text-anchor="middle" font-size="30">Workflow Lifecycle</text>
+
+  <g transform="translate(55,145)">
+    <rect class="node" width="190" height="120" rx="18"/><rect class="accent" width="190" height="10" rx="5"/>
+    <text class="title" x="95" y="52" text-anchor="middle">1. Author</text><text class="sub" x="95" y="82" text-anchor="middle">Canvas or AI prompt</text>
+  </g>
+  <g transform="translate(315,145)">
+    <rect class="node" width="190" height="120" rx="18"/><rect class="accent" width="190" height="10" rx="5"/>
+    <text class="title" x="95" y="52" text-anchor="middle">2. Validate</text><text class="sub" x="95" y="82" text-anchor="middle">Schema + DAG rules</text>
+  </g>
+  <g transform="translate(575,145)">
+    <rect class="node" width="190" height="120" rx="18"/><rect class="accent" width="190" height="10" rx="5"/>
+    <text class="title" x="95" y="52" text-anchor="middle">3. Persist</text><text class="sub" x="95" y="82" text-anchor="middle">User-scoped workflow</text>
+  </g>
+  <g transform="translate(835,145)">
+    <rect class="node" width="190" height="120" rx="18"/><rect class="accent" width="190" height="10" rx="5"/>
+    <text class="title" x="95" y="52" text-anchor="middle">4. Execute</text><text class="sub" x="95" y="82" text-anchor="middle">Topological traversal</text>
+  </g>
+  <g transform="translate(1095,145)">
+    <rect class="node" width="250" height="120" rx="18"/><rect class="accent" width="250" height="10" rx="5"/>
+    <text class="title" x="125" y="52" text-anchor="middle">5. Observe</text><text class="sub" x="125" y="82" text-anchor="middle">Live status · replay · diagnostics</text>
+  </g>
+
+  <path class="arrow" d="M245 205 H305"/><path class="arrow" d="M505 205 H565"/><path class="arrow" d="M765 205 H825"/><path class="arrow" d="M1025 205 H1085"/>
+  <path class="arrow" d="M1220 285 C1220 380, 410 380, 410 275"/>
+  <text class="sub" x="810" y="410" text-anchor="middle">Refine and rerun</text>
+</svg>

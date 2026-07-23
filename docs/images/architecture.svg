@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <style>
+      .bg { fill:#0b1020; }
+      .panel { fill:#11182b; stroke:#334155; stroke-width:2; rx:22; }
+      .node { fill:#172033; stroke:#475569; stroke-width:2; rx:16; }
+      .accent { fill:#7c3aed; }
+      .text { fill:#f8fafc; font-family:Arial,Helvetica,sans-serif; }
+      .muted { fill:#cbd5e1; font-family:Arial,Helvetica,sans-serif; }
+      .line { stroke:#94a3b8; stroke-width:3; fill:none; marker-end:url(#arrow); }
+      .dash { stroke:#64748b; stroke-width:2; stroke-dasharray:8 8; fill:none; marker-end:url(#arrow); }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1400" height="900"/>
+  <text class="text" x="700" y="58" text-anchor="middle" font-size="34" font-weight="700">FlowCraft System Architecture</text>
+  <text class="muted" x="700" y="91" text-anchor="middle" font-size="17">AI-assisted workflow authoring, validation, execution, and live observability</text>
+
+  <!-- Frontend -->
+  <rect class="panel" x="70" y="145" width="430" height="610" rx="22"/>
+  <rect class="accent" x="70" y="145" width="430" height="56" rx="22"/>
+  <text class="text" x="285" y="181" text-anchor="middle" font-size="23" font-weight="700">Next.js Frontend</text>
+
+  <rect class="node" x="110" y="235" width="350" height="85" rx="16"/>
+  <text class="text" x="285" y="269" text-anchor="middle" font-size="19" font-weight="700">React Flow Canvas</text>
+  <text class="muted" x="285" y="296" text-anchor="middle" font-size="15">Controlled graph editing and DAG constraints</text>
+
+  <rect class="node" x="110" y="345" width="350" height="85" rx="16"/>
+  <text class="text" x="285" y="379" text-anchor="middle" font-size="19" font-weight="700">Zustand Stores</text>
+  <text class="muted" x="285" y="406" text-anchor="middle" font-size="15">Workflow, execution, and UI state isolation</text>
+
+  <rect class="node" x="110" y="455" width="350" height="85" rx="16"/>
+  <text class="text" x="285" y="489" text-anchor="middle" font-size="19" font-weight="700">Schema-Driven Forms</text>
+  <text class="muted" x="285" y="516" text-anchor="middle" font-size="15">React Hook Form + shared Zod schemas</text>
+
+  <rect class="node" x="110" y="565" width="350" height="85" rx="16"/>
+  <text class="text" x="285" y="599" text-anchor="middle" font-size="19" font-weight="700">Execution Inspector</text>
+  <text class="muted" x="285" y="626" text-anchor="middle" font-size="15">Timeline, replay, variables, diagnostics</text>
+
+  <rect class="node" x="110" y="675" width="350" height="52" rx="16"/>
+  <text class="text" x="285" y="707" text-anchor="middle" font-size="17" font-weight="700">JWT Session via httpOnly Cookie</text>
+
+  <!-- Backend -->
+  <rect class="panel" x="590" y="145" width="440" height="610" rx="22"/>
+  <rect class="accent" x="590" y="145" width="440" height="56" rx="22"/>
+  <text class="text" x="810" y="181" text-anchor="middle" font-size="23" font-weight="700">Express Backend</text>
+
+  <rect class="node" x="630" y="235" width="360" height="70" rx="16"/>
+  <text class="text" x="810" y="278" text-anchor="middle" font-size="19" font-weight="700">Routes → Controllers → Services</text>
+
+  <rect class="node" x="630" y="330" width="360" height="90" rx="16"/>
+  <text class="text" x="810" y="365" text-anchor="middle" font-size="19" font-weight="700">Workflow Validation</text>
+  <text class="muted" x="810" y="393" text-anchor="middle" font-size="15">Shared schemas and deterministic checks</text>
+
+  <rect class="node" x="630" y="445" width="360" height="100" rx="16"/>
+  <text class="text" x="810" y="480" text-anchor="middle" font-size="19" font-weight="700">DAG Execution Engine</text>
+  <text class="muted" x="810" y="508" text-anchor="middle" font-size="15">Topological traversal, branching, node runtime</text>
+  <text class="muted" x="810" y="531" text-anchor="middle" font-size="15">timeouts, logs, output propagation</text>
+
+  <rect class="node" x="630" y="570" width="360" height="75" rx="16"/>
+  <text class="text" x="810" y="605" text-anchor="middle" font-size="19" font-weight="700">Socket.IO Event Stream</text>
+  <text class="muted" x="810" y="630" text-anchor="middle" font-size="15">Per-node progress without polling</text>
+
+  <rect class="node" x="630" y="670" width="360" height="58" rx="16"/>
+  <text class="text" x="810" y="706" text-anchor="middle" font-size="18" font-weight="700">Authentication + Ownership Checks</text>
+
+  <!-- Integrations -->
+  <rect class="panel" x="1120" y="145" width="220" height="610" rx="22"/>
+  <rect class="accent" x="1120" y="145" width="220" height="56" rx="22"/>
+  <text class="text" x="1230" y="181" text-anchor="middle" font-size="23" font-weight="700">Integrations</text>
+
+  <rect class="node" x="1150" y="250" width="160" height="100" rx="16"/>
+  <text class="text" x="1230" y="289" text-anchor="middle" font-size="19" font-weight="700">MongoDB</text>
+  <text class="muted" x="1230" y="316" text-anchor="middle" font-size="14">Users</text>
+  <text class="muted" x="1230" y="336" text-anchor="middle" font-size="14">Workflows · Runs</text>
+
+  <rect class="node" x="1150" y="410" width="160" height="100" rx="16"/>
+  <text class="text" x="1230" y="449" text-anchor="middle" font-size="19" font-weight="700">Claude API</text>
+  <text class="muted" x="1230" y="476" text-anchor="middle" font-size="14">Natural language</text>
+  <text class="muted" x="1230" y="496" text-anchor="middle" font-size="14">workflow generation</text>
+
+  <rect class="node" x="1150" y="570" width="160" height="100" rx="16"/>
+  <text class="text" x="1230" y="609" text-anchor="middle" font-size="19" font-weight="700">External APIs</text>
+  <text class="muted" x="1230" y="636" text-anchor="middle" font-size="14">API Call nodes</text>
+  <text class="muted" x="1230" y="656" text-anchor="middle" font-size="14">Public integrations</text>
+
+  <!-- arrows -->
+  <path class="line" d="M500 305 C545 305, 545 270, 590 270"/>
+  <text class="muted" x="545" y="253" text-anchor="middle" font-size="14">REST</text>
+
+  <path class="line" d="M590 615 C545 615, 545 600, 500 600"/>
+  <text class="muted" x="545" y="650" text-anchor="middle" font-size="14">WebSocket events</text>
+
+  <path class="line" d="M1030 300 C1075 300, 1075 300, 1120 300"/>
+  <path class="line" d="M1030 375 C1080 375, 1080 460, 1120 460"/>
+  <path class="dash" d="M1030 500 C1080 500, 1080 620, 1120 620"/>
+
+  <text class="muted" x="700" y="824" text-anchor="middle" font-size="15">Manual and AI-generated workflows enter the same validation, persistence, rendering, and execution pipeline.</text>
+</svg>
