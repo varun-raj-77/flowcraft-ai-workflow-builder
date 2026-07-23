@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowSummary } from '@/types';
 import { WorkflowCard } from './WorkflowCard';
@@ -22,6 +22,16 @@ function renderCard(workflow: WorkflowSummary) {
 afterEach(cleanup);
 
 describe('WorkflowCard summaries', () => {
+  it('keeps deletion separate from the workflow navigation link', () => {
+    const onDelete = vi.fn();
+    render(<WorkflowCard workflow={baseWorkflow} onDelete={onDelete} />);
+
+    const deleteButton = screen.getByRole('button', { name: 'Delete Summary workflow' });
+    expect(deleteButton.closest('a')).toBeNull();
+    fireEvent.click(deleteButton);
+    expect(onDelete).toHaveBeenCalledWith('workflow-1');
+  });
+
   it('renders the persisted node count and a completed latest run', () => {
     renderCard({ ...baseWorkflow, nodeCount: 6, lastExecutionStatus: 'completed' });
 

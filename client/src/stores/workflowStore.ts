@@ -74,13 +74,16 @@ function fromFlowNode(node: Node<FlowNodeData>): WorkflowNode {
  * Convert React Flow Edge back → our WorkflowEdge for persistence.
  */
 function fromFlowEdge(edge: Edge): WorkflowEdge {
+  const conditionBranch = edge.data?.conditionBranch;
   return {
     id: edge.id,
     source: edge.source,
     target: edge.target,
     sourceHandle: edge.sourceHandle ?? undefined,
     targetHandle: edge.targetHandle ?? undefined,
-    conditionBranch: edge.data?.conditionBranch,
+    conditionBranch: conditionBranch === 'true' || conditionBranch === 'false'
+      ? conditionBranch
+      : undefined,
     label: typeof edge.label === 'string' ? edge.label : undefined,
   };
 }

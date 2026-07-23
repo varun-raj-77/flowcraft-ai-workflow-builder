@@ -35,7 +35,7 @@ function PaletteItem({ info }: PaletteItemProps) {
     const nodeId = addNode(info.type, position);
     selectNode(nodeId);
   }, [addNode, info.type, screenToFlowPosition, selectNode]);
-  function handleDragStart(event: DragEvent<HTMLDivElement>) {
+  function handleDragStart(event: DragEvent<HTMLButtonElement>) {
     // Set the node type as transfer payload — the canvas onDrop reads this
     event.dataTransfer.setData(DND_TRANSFER_TYPE, info.type);
     event.dataTransfer.effectAllowed = 'move';

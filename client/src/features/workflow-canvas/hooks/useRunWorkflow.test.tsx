@@ -85,4 +85,18 @@ describe('useRunWorkflow socket setup', () => {
     expect(useExecutionStore.getState().currentRun?._id).toBe('run_1');
     expect(useExecutionStore.getState().isRunning).toBe(true);
   });
+
+  it('cleans up execution polling when the editor unmounts', async () => {
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    mocks.prepareSocket.mockReturnValue({});
+    mocks.runWorkflow.mockResolvedValue(runningRun);
+    const { result, unmount } = renderHook(() => useRunWorkflow());
+
+    await act(async () => { await result.current.run(); });
+    unmount();
+
+    expect(clearIntervalSpy).toHaveBeenCalled();
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+  });
 });

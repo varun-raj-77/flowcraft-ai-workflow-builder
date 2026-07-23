@@ -32,6 +32,15 @@ afterEach(() => {
 });
 
 describe('AIGeneratorModal validation', () => {
+  it('provides dialog semantics and closes with Escape', () => {
+    render(<AIGeneratorModal />);
+
+    expect(screen.getByRole('dialog', { name: '✦ Generate with AI' })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByPlaceholderText(/Fetch data from an API/i));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(mocks.closeModal).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps incomplete generated graphs out of the workflow store', async () => {
     mocks.generateWorkflow.mockResolvedValue({
       name: 'Incomplete workflow',

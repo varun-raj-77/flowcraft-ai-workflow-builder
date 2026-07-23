@@ -4,39 +4,41 @@
 
 export type NodeType = 'start' | 'api_call' | 'condition' | 'transform' | 'delay' | 'output' | 'end';
 
-export interface StartConfig {
+export type StartConfig = {
+  readonly [key: string]: unknown;
   // Start node has no configuration — it's the entry point
 }
 
-export interface ApiCallConfig {
+export type ApiCallConfig = {
   url: string;
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   headers: Record<string, string>;
   body?: string;
   timeout?: number;
-}
+};
 
-export interface ConditionConfig {
+export type ConditionConfig = {
   expression: string;
   trueTargetNodeId?: string;
   falseTargetNodeId?: string;
-}
+};
 
-export interface TransformConfig {
+export type TransformConfig = {
   transformCode: string;
   description?: string;
-}
+};
 
-export interface DelayConfig {
+export type DelayConfig = {
   delayMs: number;
-}
+};
 
-export interface OutputConfig {
+export type OutputConfig = {
   logLevel: 'info' | 'warn' | 'error';
   message: string;
-}
+};
 
-export interface EndConfig {
+export type EndConfig = {
+  readonly [key: string]: unknown;
   // End node has no configuration — it's the terminal point
 }
 
@@ -83,7 +85,7 @@ export interface WorkflowEdge {
  * React Flow wraps our domain node as: { id, type, position, data: FlowNodeData }
  * Custom node components receive this via props.data.
  */
-export interface FlowNodeData {
+export interface FlowNodeData extends Record<string, unknown> {
   label: string;
   nodeType: NodeType;
   config: NodeConfig;

@@ -56,7 +56,7 @@ export default function EditorPage() {
       }
     }
 
-    loadWorkflow();
+    void loadWorkflow();
 
     // Don't clear on unmount — preserves store state during navigation
     return () => {};

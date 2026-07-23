@@ -1,4 +1,4 @@
-import { Workflow, type IWorkflowDocument } from '../../models/Workflow.model';
+import { Workflow } from '../../models/Workflow.model';
 import {
   ExecutionRun,
   type IExecutionRunDocument,

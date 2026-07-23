@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/stores/uiStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
@@ -9,6 +9,7 @@ import { GenerationValidationFeedback } from './GenerationValidationFeedback';
 import * as api from '@/lib/api';
 import type { Workflow } from '@/types';
 import type { CapabilityCoverage } from '@/types';
+import { useModalDialog } from '@/lib/useModalDialog';
 
 const EXAMPLE_PROMPTS = [
   'Fetch users from an API, filter active users, and log the count',
@@ -37,6 +38,13 @@ export function AIGeneratorModal() {
   const [generationStage, setGenerationStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<CapabilityCoverage | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useModalDialog({
+    isOpen,
+    onClose: closeModal,
+    canClose: !isGenerating,
+    initialFocusRef: promptRef,
+  });
 
   useEffect(() => {
     if (!isGenerating) return;
@@ -107,33 +115,45 @@ export function AIGeneratorModal() {
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={closeModal}
+        onClick={() => { if (!isGenerating) closeModal(); }}
       />
 
       {/* Modal */}
-      <div className="relative z-10 mx-4 w-full max-w-lg rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ai-generator-title"
+        aria-describedby="ai-generator-description"
+        tabIndex={-1}
+        className="relative z-10 mx-4 flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col rounded-xl border border-zinc-200 bg-white shadow-2xl outline-none dark:border-zinc-700 dark:bg-zinc-900"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-700">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            <h2 id="ai-generator-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
               ✦ Generate with AI
             </h2>
-            <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+            <p id="ai-generator-description" className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
               Describe your workflow in plain English.
             </p>
           </div>
           <button
+            type="button"
             onClick={closeModal}
-            className="rounded-md p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            disabled={isGenerating}
+            aria-label="Close AI generator"
+            className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
           >
             ✕
           </button>
         </div>
 
         {/* Body */}
-        <div className="px-5 py-4">
+        <div className="min-h-0 overflow-y-auto px-5 py-4">
           {/* Prompt input */}
           <textarea
+            ref={promptRef}
             value={prompt}
             onChange={(e) => {
               setPrompt(e.target.value);
@@ -142,14 +162,13 @@ export function AIGeneratorModal() {
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                handleGenerate();
+                void handleGenerate();
               }
             }}
             placeholder="e.g., Fetch data from an API, check if the response is valid, and log the result..."
             rows={4}
             className="w-full resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder:text-zinc-500"
             disabled={isGenerating}
-            autoFocus
           />
 
           {/* Character count */}
@@ -171,7 +190,7 @@ export function AIGeneratorModal() {
 
           {/* Error */}
           {error && (
-            <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-950/30">
+            <div role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-950/30">
               <p className="text-xs text-red-700 dark:text-red-400">{error}</p>
             </div>
           )}
@@ -186,9 +205,10 @@ export function AIGeneratorModal() {
               <div className="flex flex-wrap gap-1.5">
                 {EXAMPLE_PROMPTS.map((example) => (
                   <button
+                    type="button"
                     key={example}
                     onClick={() => handleExampleClick(example)}
-                    className="rounded-md bg-zinc-100 px-2.5 py-1 text-[11px] text-zinc-600 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                    className="rounded-md bg-zinc-100 px-2.5 py-1 text-[11px] text-zinc-600 transition-colors hover:bg-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
                   >
                     {example.length > 50 ? example.slice(0, 50) + '…' : example}
                   </button>
@@ -199,7 +219,7 @@ export function AIGeneratorModal() {
 
           {/* Loading state */}
           {isGenerating && (
-            <div className="mt-4 rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4 dark:border-violet-900/50 dark:from-violet-950/30 dark:to-zinc-900">
+            <div role="status" aria-live="polite" className="mt-4 rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4 dark:border-violet-900/50 dark:from-violet-950/30 dark:to-zinc-900">
               <div className="flex items-center gap-3">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-600 text-[10px] font-semibold text-white shadow-sm animate-pulse">AI</span>
               <div>
@@ -212,7 +232,7 @@ export function AIGeneratorModal() {
               </div>
               </div>
               <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-950"><div className="h-full rounded-full bg-violet-600 transition-all duration-500 ease-out" style={{ width: `${((generationStage + 1) / GENERATION_STAGES.length) * 100}%` }} /></div>
-              <div className="mt-3 space-y-1" aria-live="polite">{GENERATION_STAGES.slice(0, generationStage + 1).map((stage, index) => <p key={stage} className={index === generationStage ? 'text-xs font-medium text-violet-800 dark:text-violet-200' : 'text-[10px] text-zinc-400 dark:text-zinc-500'}><span className="mr-2">{index === generationStage ? '•' : '✓'}</span>{stage}</p>)}</div>
+              <div className="mt-3 space-y-1">{GENERATION_STAGES.slice(0, generationStage + 1).map((stage, index) => <p key={stage} className={index === generationStage ? 'text-xs font-medium text-violet-800 dark:text-violet-200' : 'text-[10px] text-zinc-400 dark:text-zinc-500'}><span className="mr-2">{index === generationStage ? '•' : '✓'}</span>{stage}</p>)}</div>
             </div>
           )}
         </div>

@@ -1,6 +1,6 @@
-import mongoose, { type Document, Schema } from 'mongoose';
+import mongoose, { type HydratedDocument, Schema } from 'mongoose';
 
-export interface IUserDocument extends Document {
+export interface IUser {
   email: string;
   passwordHash: string;
   displayName: string;
@@ -8,7 +8,9 @@ export interface IUserDocument extends Document {
   updatedAt: Date;
 }
 
-const userSchema = new Schema<IUserDocument>(
+export type IUserDocument = HydratedDocument<IUser>;
+
+const userSchema = new Schema<IUser>(
   {
     email: {
       type: String,
@@ -34,13 +36,15 @@ const userSchema = new Schema<IUserDocument>(
     timestamps: true,
     toJSON: {
       transform(_doc, ret) {
-        ret._id = ret._id.toString();
-        delete ret.passwordHash;
-        delete ret.__v;
-        return ret;
+        return {
+          ...ret,
+          _id: ret._id.toString(),
+          passwordHash: undefined,
+          __v: undefined,
+        };
       },
     },
   },
 );
 
-export const User = mongoose.model<IUserDocument>('User', userSchema);
+export const User = mongoose.model<IUser>('User', userSchema);

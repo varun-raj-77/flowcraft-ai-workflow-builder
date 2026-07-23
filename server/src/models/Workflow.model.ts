@@ -1,28 +1,13 @@
-import mongoose, { type Document, Schema } from 'mongoose';
+import mongoose, { type HydratedDocument, Schema } from 'mongoose';
 
 // ── TypeScript interface for the document ───────────────────
 
-export interface IWorkflowDocument extends Document {
+export interface IWorkflow {
   userId: string;
   name: string;
   description?: string;
-  nodes: Array<{
-    id: string;
-    type: string;
-    label: string;
-    position: { x: number; y: number };
-    config: Record<string, unknown>;
-    description?: string;
-  }>;
-  edges: Array<{
-    id: string;
-    source: string;
-    target: string;
-    sourceHandle?: string;
-    targetHandle?: string;
-    conditionBranch?: string;
-    label?: string;
-  }>;
+  nodes: unknown[];
+  edges: unknown[];
   isGeneratedByAI: boolean;
   generationMetadata?: {
     originalPrompt: string;
@@ -42,9 +27,11 @@ export interface IWorkflowDocument extends Document {
   updatedAt: Date;
 }
 
+export type IWorkflowDocument = HydratedDocument<IWorkflow>;
+
 // ── Schema ──────────────────────────────────────────────────
 
-const workflowSchema = new Schema<IWorkflowDocument>(
+const workflowSchema = new Schema<IWorkflow>(
   {
     userId: {
       type: String,
@@ -98,12 +85,14 @@ const workflowSchema = new Schema<IWorkflowDocument>(
     // Custom toJSON to rename _id and strip __v for cleaner API responses
     toJSON: {
       transform(_doc, ret) {
-        ret._id = ret._id.toString();
-        delete ret.__v;
-        return ret;
+        return {
+          ...ret,
+          _id: String(ret._id),
+          __v: undefined,
+        };
       },
     },
   },
 );
 
-export const Workflow = mongoose.model<IWorkflowDocument>('Workflow', workflowSchema);
+export const Workflow = mongoose.model<IWorkflow>('Workflow', workflowSchema);

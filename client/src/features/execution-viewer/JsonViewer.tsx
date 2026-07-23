@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { redactInspectionValue } from './executionInspector';
 
 const ARRAY_PREVIEW_LIMIT = 100;
@@ -56,27 +56,44 @@ export function JsonViewer({ value }: { value: unknown }) {
   const [wrap, setWrap] = useState(true);
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const safeValue = useMemo(() => redactInspectionValue(value), [value]);
   const serialized = useMemo(() => JSON.stringify(safeValue, null, 2) ?? 'null', [safeValue]);
   const matches = useMemo(() => countSearchMatches(safeValue, query), [safeValue, query]);
   const itemCount = Array.isArray(safeValue) ? safeValue.length : safeValue && typeof safeValue === 'object' ? Object.keys(safeValue as Record<string, unknown>).length : null;
 
+  useEffect(() => () => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+  }, []);
+
   const copy = async () => {
-    if (!navigator.clipboard?.writeText) return;
-    await navigator.clipboard.writeText(serialized);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(serialized);
+      setCopied(true);
+      setCopyFailed(false);
+    } catch {
+      setCopied(false);
+      setCopyFailed(true);
+    }
+    copyTimerRef.current = setTimeout(() => {
+      setCopied(false);
+      setCopyFailed(false);
+      copyTimerRef.current = null;
+    }, 1500);
   };
 
   return <div className="mt-1 rounded-md border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950">
     <div className="flex flex-wrap items-center gap-1 border-b border-zinc-100 px-2 py-1.5 text-[10px] dark:border-zinc-800">
       <span className="mr-auto text-zinc-500">{itemCount === null ? 'Value' : `${itemCount} ${Array.isArray(safeValue) ? 'items' : 'keys'} · ~${new TextEncoder().encode(serialized).byteLength.toLocaleString()} bytes`}</span>
-      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Count matching keys/values" aria-label="Count matching JSON keys and values" className="w-36 rounded border border-zinc-200 bg-transparent px-1.5 py-0.5 text-[10px] outline-none focus:border-blue-500 dark:border-zinc-700" />
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Count matching keys/values" aria-label="Count matching JSON keys and values" className="w-36 rounded border border-zinc-200 bg-transparent px-1.5 py-0.5 text-[10px] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 dark:border-zinc-700" />
       {query && <span className="text-zinc-500">{matches}{matches >= 100 ? '+' : ''} matches</span>}
-      <button type="button" onClick={() => { setExpandAll(false); setCollapseToken((token) => token + 1); }} aria-label="Collapse all JSON" className="rounded px-1 hover:bg-zinc-100 dark:hover:bg-zinc-800">Collapse all</button>
-      <button type="button" onClick={() => setExpandAll(true)} aria-label="Expand JSON branches" className="rounded px-1 hover:bg-zinc-100 dark:hover:bg-zinc-800">Expand branches</button>
-      <button type="button" onClick={() => setWrap((current) => !current)} aria-label="Toggle JSON line wrapping" className="rounded px-1 hover:bg-zinc-100 dark:hover:bg-zinc-800">Wrap</button>
-      <button type="button" onClick={() => void copy()} aria-label="Copy redacted JSON" className="rounded px-1 hover:bg-zinc-100 dark:hover:bg-zinc-800">{copied ? 'Copied' : 'Copy JSON'}</button>
+      <button type="button" onClick={() => { setExpandAll(false); setCollapseToken((token) => token + 1); }} aria-label="Collapse all JSON" className="rounded px-1 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800">Collapse all</button>
+      <button type="button" onClick={() => setExpandAll(true)} aria-label="Expand JSON branches" className="rounded px-1 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800">Expand branches</button>
+      <button type="button" onClick={() => setWrap((current) => !current)} aria-label="Toggle JSON line wrapping" className="rounded px-1 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800">Wrap</button>
+      <button type="button" onClick={() => void copy()} aria-label="Copy redacted JSON" className="rounded px-1 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800">{copied ? 'Copied' : copyFailed ? 'Copy unavailable' : 'Copy JSON'}</button>
     </div>
     <pre className="max-h-none overflow-x-auto p-2 font-mono text-[10px] leading-relaxed text-zinc-700 dark:text-zinc-300"><JsonValue value={safeValue} depth={0} expandAll={expandAll} collapseToken={collapseToken} wrap={wrap} /></pre>
   </div>;

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useWorkflowStore } from './workflowStore';
-import type { Workflow } from '@/types';
+import type { FlowNodeData, Workflow } from '@/types';
 import type { Edge, Node } from '@xyflow/react';
 
 const workflow: Workflow = { _id: 'workflow_1', userId: 'user_1', name: 'Saved workflow', nodes: [{ id: 'start', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} }], edges: [], isGeneratedByAI: true, generationMetadata: { originalPrompt: 'Fetch data', generatedAt: '2026-01-01T00:00:00.000Z' }, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
@@ -58,7 +58,7 @@ describe('workflow dirty-state contract', () => {
   });
 
   it('restores exact node and edge data after a safe linear reconnect delete', () => {
-    const nodes: Node[] = [
+    const nodes: Node<FlowNodeData>[] = [
       { id: 'a', type: 'start', position: { x: 0, y: 0 }, data: { label: 'A', nodeType: 'start', config: {} } },
       { id: 'b', type: 'transform', position: { x: 100, y: 0 }, data: { label: 'B', nodeType: 'transform', config: { transformCode: 'return data' } } },
       { id: 'c', type: 'end', position: { x: 200, y: 0 }, data: { label: 'C', nodeType: 'end', config: {} } },
@@ -69,7 +69,7 @@ describe('workflow dirty-state contract', () => {
     ];
     useWorkflowStore.setState({ nodes, edges, meta: { _id: 'workflow_1', name: 'Saved workflow', isGeneratedByAI: false }, savedSnapshot: { nodes, edges, meta: { _id: 'workflow_1', name: 'Saved workflow', isGeneratedByAI: false } }, undoStack: [], redoStack: [], isDirty: false });
 
-    useWorkflowStore.getState().removeNodeAndReconnect('b', { source: 'a', target: 'c' });
+    useWorkflowStore.getState().removeNodeAndReconnect('b', { source: 'a', target: 'c', sourceHandle: null, targetHandle: null });
     expect(useWorkflowStore.getState().edges).toHaveLength(1);
     useWorkflowStore.getState().undo();
     expect(useWorkflowStore.getState().nodes).toEqual(nodes);

@@ -124,8 +124,8 @@ export function WorkflowCanvas() {
             if (!shouldReconnect) return;
             const [before] = incoming;
             const [after] = outgoing;
-            if (before.source !== after.target && isValidConnection({ source: before.source, target: after.target, sourceHandle: before.sourceHandle, targetHandle: after.targetHandle })) {
-              useWorkflowStore.getState().removeNodeAndReconnect(selectedNodeId, { source: before.source, target: after.target, sourceHandle: before.sourceHandle, targetHandle: after.targetHandle });
+            if (before.source !== after.target && isValidConnection({ source: before.source, target: after.target, sourceHandle: before.sourceHandle ?? null, targetHandle: after.targetHandle ?? null })) {
+              useWorkflowStore.getState().removeNodeAndReconnect(selectedNodeId, { source: before.source, target: after.target, sourceHandle: before.sourceHandle ?? null, targetHandle: after.targetHandle ?? null });
               showUndoToast('Node deleted — Undo');
               selectNode(null);
               return;

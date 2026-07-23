@@ -1,4 +1,5 @@
 import { Server as SocketServer } from 'socket.io';
+import type { ExtendedError, Socket } from 'socket.io';
 import type { Server as HttpServer } from 'http';
 import { env } from './environment';
 import { consumeSocketTicket } from '../services/socketTicket.service';
@@ -20,54 +21,20 @@ export function initializeSocket(httpServer: HttpServer): SocketServer {
     },
   });
 
-  io.use(async (socket, next) => {
-    const ticket = socket.handshake.auth?.ticket;
-    if (typeof ticket !== 'string' || ticket.length === 0) {
-      console.warn(JSON.stringify({ event: 'socket_auth_failed', reason: 'missing_ticket' }));
-      next(new Error('Unauthorized socket connection'));
-      return;
-    }
-
-    try {
-      const userId = await consumeSocketTicket(ticket);
-      if (!userId) {
-        console.warn(JSON.stringify({ event: 'socket_auth_failed', reason: 'invalid_ticket' }));
-        next(new Error('Unauthorized socket connection'));
-        return;
-      }
-      socket.data.userId = userId;
-      next();
-    } catch {
-      console.warn(JSON.stringify({ event: 'socket_auth_failed', reason: 'ticket_lookup_failed' }));
-      next(new Error('Unauthorized socket connection'));
-    }
+  io.use((socket, next) => {
+    void authenticateSocket(socket, next);
   });
 
   io.on('connection', (socket) => {
     console.log(`[socket] Client connected: ${socket.id}`);
 
     // Clients join a room for a specific execution run
-    socket.on('join:execution', async (runId: string) => {
-      const userId = socket.data.userId as string | undefined;
-      if (!userId || !(await canJoinExecution(runId, userId))) {
-        console.warn(JSON.stringify({
-          event: 'socket_execution_join_rejected',
-          socketId: socket.id,
-          runId,
-        }));
-        socket.emit('execution:error', {
-          runId,
-          code: 'UNAUTHORIZED_EXECUTION',
-          message: 'You are not allowed to view this execution.',
-        });
-        return;
-      }
-      socket.join(`execution:${runId}`);
-      console.log(`[socket] ${socket.id} joined execution:${runId}`);
+    socket.on('join:execution', (runId: string) => {
+      void joinExecutionRoom(socket, runId);
     });
 
     socket.on('leave:execution', (runId: string) => {
-      socket.leave(`execution:${runId}`);
+      void socket.leave(`execution:${runId}`);
     });
 
     socket.on('disconnect', () => {
@@ -77,6 +44,51 @@ export function initializeSocket(httpServer: HttpServer): SocketServer {
 
   console.log('[socket] Socket.IO initialized');
   return io;
+}
+
+async function authenticateSocket(
+  socket: Socket,
+  next: (error?: ExtendedError) => void,
+): Promise<void> {
+  const ticket = socket.handshake.auth?.ticket;
+  if (typeof ticket !== 'string' || ticket.length === 0) {
+    console.warn(JSON.stringify({ event: 'socket_auth_failed', reason: 'missing_ticket' }));
+    next(new Error('Unauthorized socket connection'));
+    return;
+  }
+
+  try {
+    const userId = await consumeSocketTicket(ticket);
+    if (!userId) {
+      console.warn(JSON.stringify({ event: 'socket_auth_failed', reason: 'invalid_ticket' }));
+      next(new Error('Unauthorized socket connection'));
+      return;
+    }
+    socket.data.userId = userId;
+    next();
+  } catch {
+    console.warn(JSON.stringify({ event: 'socket_auth_failed', reason: 'ticket_lookup_failed' }));
+    next(new Error('Unauthorized socket connection'));
+  }
+}
+
+async function joinExecutionRoom(socket: Socket, runId: string): Promise<void> {
+  const userId = socket.data.userId as string | undefined;
+  if (!userId || !(await canJoinExecution(runId, userId))) {
+    console.warn(JSON.stringify({
+      event: 'socket_execution_join_rejected',
+      socketId: socket.id,
+      runId,
+    }));
+    socket.emit('execution:error', {
+      runId,
+      code: 'UNAUTHORIZED_EXECUTION',
+      message: 'You are not allowed to view this execution.',
+    });
+    return;
+  }
+  await socket.join(`execution:${runId}`);
+  console.log(`[socket] ${socket.id} joined execution:${runId}`);
 }
 
 async function canJoinExecution(runId: string, userId: string): Promise<boolean> {
