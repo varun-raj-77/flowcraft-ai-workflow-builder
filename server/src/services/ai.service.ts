@@ -4,6 +4,7 @@ import { WORKFLOW_GENERATION_SYSTEM_PROMPT } from '../prompts/workflowGeneration
 import { createWorkflowSchema, validateNodeConfig, validateEdgeReferences, validateUniqueNodeIds, isValidDAG } from '../validators/workflow.validator';
 import { redactText } from '../utils/redact';
 import { assessCapabilityCoverage, type CapabilityCoverage } from './aiCapabilities';
+import { validateGeneratedApiAuthentication, validatePromptAuthenticationIntent } from './aiAuthentication';
 import { validateGeneratedWorkflowConsistency } from './aiConsistency';
 
 export interface GeneratedWorkflow {
@@ -75,6 +76,10 @@ function validateGeneratedWorkflow(data: unknown): Omit<GeneratedWorkflow, 'gene
 /** Calls the configured provider. There is intentionally no generic production fallback. */
 export async function generateWorkflow(prompt: string): Promise<GeneratedWorkflow> {
   if (!prompt.trim()) throw new AppError(400, 'EMPTY_PROMPT', 'Please provide a description of the workflow you want to create.');
+  const authenticationIntentIssue = validatePromptAuthenticationIntent(prompt);
+  if (authenticationIntentIssue) {
+    throw new AppError(422, authenticationIntentIssue.code, authenticationIntentIssue.message);
+  }
   const rawResponse = await callLLM(prompt);
   let parsed: unknown;
   try { parsed = JSON.parse(extractJSON(rawResponse)); } catch (error) {
@@ -82,6 +87,10 @@ export async function generateWorkflow(prompt: string): Promise<GeneratedWorkflo
     throw new AppError(422, 'AI_PARSE_FAILED', 'AI response could not be parsed as JSON. Try rephrasing your prompt.');
   }
   const workflow = validateGeneratedWorkflow(parsed);
+  const authenticationIssues = validateGeneratedApiAuthentication(workflow);
+  if (authenticationIssues.length > 0) {
+    throw new AppError(422, authenticationIssues[0].code, authenticationIssues[0].message);
+  }
   const consistencyIssues = validateGeneratedWorkflowConsistency(workflow);
   if (consistencyIssues.length > 0) {
     throw new AppError(422, consistencyIssues[0].code, consistencyIssues[0].message);
