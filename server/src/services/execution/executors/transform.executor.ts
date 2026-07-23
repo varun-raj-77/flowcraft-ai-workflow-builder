@@ -1,16 +1,11 @@
+import { buildExecutionInputs } from '../templateEngine';
 import type { NodeExecutor } from './types';
 import { createTransformDiagnostic, TransformExecutionError } from './transformDiagnostics';
 
-export const executeTransform: NodeExecutor = async ({ nodeId, config, context }) => {
+export const executeTransform: NodeExecutor = async ({ config, context }) => {
   const code = String(config.transformCode || 'return input');
 
-  // Build an input object from all available node outputs
-  const allOutputs: Record<string, unknown> = {};
-  let prevOutput: unknown = {};
-  for (const [id, output] of context.entries()) {
-    allOutputs[id] = output;
-    prevOutput = output; // Last one becomes 'prev'
-  }
+  const executionInputs = buildExecutionInputs(context);
 
   try {
     // 'input' = all outputs keyed by node ID
@@ -18,7 +13,7 @@ export const executeTransform: NodeExecutor = async ({ nodeId, config, context }
     // 'nodes' = same as input (alias)
     // eslint-disable-next-line no-new-func
     const fn = new Function('input', 'prev', 'nodes', `"use strict"; ${code}`);
-    const result = fn(allOutputs, prevOutput, allOutputs);
+    const result = fn(executionInputs.input, executionInputs.prev, executionInputs.nodes);
 
     const output = (result !== null && result !== undefined && typeof result === 'object')
       ? result as Record<string, unknown>
@@ -27,6 +22,6 @@ export const executeTransform: NodeExecutor = async ({ nodeId, config, context }
     return { output };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new TransformExecutionError(createTransformDiagnostic(code, allOutputs, message));
+    throw new TransformExecutionError(createTransformDiagnostic(code, executionInputs.input, message));
   }
 };
