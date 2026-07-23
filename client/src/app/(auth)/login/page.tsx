@@ -77,7 +77,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-400">
+            <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-400">
               {error}
             </div>
           )}
@@ -121,7 +121,7 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
           Don&apos;t have an account?{' '}
-          <Link href="/register" className="font-medium text-zinc-900 hover:underline dark:text-zinc-100">
+          <Link href="/register" className="rounded font-medium text-zinc-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:text-zinc-100">
             Sign up
           </Link>
         </p>

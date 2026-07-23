@@ -1,4 +1,5 @@
-import { Workflow, type IWorkflowDocument } from '../models/Workflow.model';
+import { type Types } from 'mongoose';
+import { Workflow, type IWorkflow, type IWorkflowDocument } from '../models/Workflow.model';
 import { ExecutionRun } from '../models/ExecutionRun.model';
 import { AppError } from '../middleware/errorHandler.middleware';
 import {
@@ -111,15 +112,20 @@ export async function listWorkflows(
 
 export async function listWorkflowDocuments(
   userId: string,
-): Promise<IWorkflowDocument[]> {
+): Promise<WorkflowListDocument[]> {
   const workflows = await Workflow
     .find({ userId })
     .sort({ updatedAt: -1 }) // Most recently updated first
     .select('-nodes -edges')  // Exclude graph data from list — only load it when opening a specific workflow
-    .lean();
+    .lean<WorkflowListDocument[]>();
 
-  return workflows as IWorkflowDocument[];
+  return workflows;
 }
+
+type WorkflowListDocument = Pick<
+  IWorkflow,
+  'userId' | 'name' | 'description' | 'isGeneratedByAI' | 'generationMetadata' | 'createdAt' | 'updatedAt'
+> & { _id: Types.ObjectId };
 
 export async function updateWorkflow(
   workflowId: string,

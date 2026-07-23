@@ -71,9 +71,18 @@ export function Button({
   const buttonProps = props as React.ButtonHTMLAttributes<HTMLButtonElement>;
 
   return (
-    <button className={classes} disabled={isLoading || buttonProps.disabled} {...buttonProps}>
+    <button
+      {...buttonProps}
+      type={buttonProps.type ?? 'button'}
+      className={classes}
+      disabled={isLoading || buttonProps.disabled}
+      aria-busy={isLoading || undefined}
+    >
       {isLoading && (
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        <span
+          aria-hidden="true"
+          className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+        />
       )}
       {children}
     </button>

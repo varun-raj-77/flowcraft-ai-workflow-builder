@@ -44,16 +44,6 @@ const endConfigSchema = z.object({}).passthrough();
 // We validate the specific config shape in the refinement below,
 // so here we accept any object.
 
-const nodeConfigSchema = z.union([
-  startConfigSchema,
-  apiCallConfigSchema,
-  conditionConfigSchema,
-  transformConfigSchema,
-  delayConfigSchema,
-  outputConfigSchema,
-  endConfigSchema,
-]);
-
 // ── Position ────────────────────────────────────────────────
 
 const positionSchema = z.object({

@@ -1,4 +1,15 @@
 {
+  "name": "flowcraft",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --prefix server && npm run build --prefix client",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "lint": "npm run lint --prefix client && npm run lint --prefix server",
+    "lint:fix": "npm run lint:fix --prefix client && npm run lint:fix --prefix server",
+    "test": "npm run test --prefix client && npm run test --prefix server",
+    "test:e2e": "npm run test:e2e --prefix client",
+    "typecheck": "npm run typecheck --prefix client && npm run typecheck --prefix server"
+  },
   "dependencies": {
     "tsx": "^4.21.0"
   }

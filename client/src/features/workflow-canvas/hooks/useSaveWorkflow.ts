@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import * as api from '@/lib/api';
@@ -14,10 +14,39 @@ export function useSaveWorkflow() {
   const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
 
   const [status, setStatus] = useState<SaveStatus>('idle');
+  const isSavingRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearStatusTimer = useCallback(() => {
+    if (statusTimerRef.current) {
+      clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = null;
+    }
+  }, []);
+
+  const resetStatusAfter = useCallback((delayMs: number) => {
+    if (!isMountedRef.current) return;
+    clearStatusTimer();
+    statusTimerRef.current = setTimeout(() => {
+      setStatus('idle');
+      statusTimerRef.current = null;
+    }, delayMs);
+  }, [clearStatusTimer]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      clearStatusTimer();
+    };
+  }, [clearStatusTimer]);
 
   const save = useCallback(async (): Promise<void> => {
-    if (status === 'saving') return; // Prevent double-save
+    if (isSavingRef.current) return;
 
+    isSavingRef.current = true;
+    clearStatusTimer();
     setStatus('saving');
 
     try {
@@ -44,15 +73,16 @@ export function useSaveWorkflow() {
         router.replace(`/editor/${created._id}`);
       }
 
-      setStatus('saved');
-      setTimeout(() => setStatus('idle'), 2000);
+      if (isMountedRef.current) setStatus('saved');
+      resetStatusAfter(2000);
     } catch (err) {
-      console.error('[save] Failed:', err);
-      setStatus('error');
-      setTimeout(() => setStatus('idle'), 3000);
+      if (isMountedRef.current) setStatus('error');
+      resetStatusAfter(3000);
       throw err;
+    } finally {
+      isSavingRef.current = false;
     }
-  }, [status, meta, toWorkflowNodes, toWorkflowEdges, setWorkflow, router]);
+  }, [clearStatusTimer, meta, resetStatusAfter, toWorkflowNodes, toWorkflowEdges, setWorkflow, router]);
 
   return { save, status };
 }

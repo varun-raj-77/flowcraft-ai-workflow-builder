@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { JsonViewer } from './JsonViewer';
 
 beforeEach(() => {
@@ -42,5 +42,14 @@ describe('JsonViewer', () => {
     expect(screen.getByText('1 matches')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Copy redacted JSON' }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('[REDACTED]'));
+  });
+
+  it('reports a clipboard failure without an unhandled rejection', async () => {
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('Permission denied'));
+    render(<JsonViewer value={{ result: 'safe' }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy redacted JSON' }));
+
+    await waitFor(() => expect(screen.getByText('Copy unavailable')).toBeTruthy());
   });
 });

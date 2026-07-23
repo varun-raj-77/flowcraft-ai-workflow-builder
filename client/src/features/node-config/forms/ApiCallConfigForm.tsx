@@ -53,7 +53,7 @@ export function ApiCallConfigForm({ nodeId, config }: ApiCallConfigFormProps) {
           control={control}
           render={({ field }) => (
             <KeyValueEditor
-              value={field.value}
+              value={field.value ?? {}}
               onChange={field.onChange}
             />
           )}

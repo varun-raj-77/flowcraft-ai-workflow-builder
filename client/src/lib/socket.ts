@@ -11,7 +11,7 @@ const CLIENT_SOCKET_ENV = {
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
 };
 
-type SocketEnvironment = Readonly<Pick<NodeJS.ProcessEnv, 'NODE_ENV' | 'VERCEL' | 'NEXT_PUBLIC_SOCKET_URL' | 'NEXT_PUBLIC_API_URL'>>;
+type SocketEnvironment = Readonly<Partial<Pick<NodeJS.ProcessEnv, 'NODE_ENV' | 'VERCEL' | 'NEXT_PUBLIC_SOCKET_URL' | 'NEXT_PUBLIC_API_URL'>>>;
 export type SocketUrlSource = 'socket-url' | 'api-url' | 'development';
 
 export interface SocketUrlResolution {

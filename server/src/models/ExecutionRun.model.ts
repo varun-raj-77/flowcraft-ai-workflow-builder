@@ -1,4 +1,4 @@
-import mongoose, { type Document, Schema } from 'mongoose';
+import mongoose, { type HydratedDocument, Schema } from 'mongoose';
 
 export interface IStepLog {
   nodeId: string;
@@ -14,7 +14,7 @@ export interface IStepLog {
   diagnostic?: Record<string, unknown>;
 }
 
-export interface IExecutionRunDocument extends Document {
+export interface IExecutionRun {
   workflowId: mongoose.Types.ObjectId;
   userId: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
@@ -27,6 +27,8 @@ export interface IExecutionRunDocument extends Document {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type IExecutionRunDocument = HydratedDocument<IExecutionRun>;
 
 const stepLogSchema = new Schema<IStepLog>(
   {
@@ -49,7 +51,7 @@ const stepLogSchema = new Schema<IStepLog>(
   { _id: false },
 );
 
-const executionRunSchema = new Schema<IExecutionRunDocument>(
+const executionRunSchema = new Schema<IExecutionRun>(
   {
     workflowId: {
       type: Schema.Types.ObjectId,
@@ -83,10 +85,12 @@ const executionRunSchema = new Schema<IExecutionRunDocument>(
     timestamps: true,
     toJSON: {
       transform(_doc, ret) {
-        ret._id = ret._id.toString();
-        ret.workflowId = ret.workflowId.toString();
-        delete ret.__v;
-        return ret;
+        return {
+          ...ret,
+          _id: ret._id.toString(),
+          workflowId: ret.workflowId.toString(),
+          __v: undefined,
+        };
       },
     },
   },
@@ -96,7 +100,7 @@ const executionRunSchema = new Schema<IExecutionRunDocument>(
 executionRunSchema.index({ workflowId: 1, createdAt: -1 });
 executionRunSchema.index({ userId: 1 });
 
-export const ExecutionRun = mongoose.model<IExecutionRunDocument>(
+export const ExecutionRun = mongoose.model<IExecutionRun>(
   'ExecutionRun',
   executionRunSchema,
 );

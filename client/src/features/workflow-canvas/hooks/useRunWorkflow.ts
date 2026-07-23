@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -16,21 +16,27 @@ export function useRunWorkflow() {
   const { save } = useSaveWorkflow();
   const { joinRun, prepareSocket } = useExecutionSocket();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
   }, []);
+
+  useEffect(() => stopPolling, [stopPolling]);
 
   const startPolling = useCallback((runId: string) => {
     stopPolling();
 
     // Poll every 2 seconds until the run is no longer 'running'
-    pollRef.current = setInterval(async () => {
-      try {
-        const run = await api.getExecution(runId);
+    pollRef.current = setInterval(() => {
+      void api.getExecution(runId).then((run) => {
         if (useWorkflowStore.getState().meta?._id !== run.workflowId) {
           stopPolling();
           return;
@@ -40,13 +46,13 @@ export function useRunWorkflow() {
         if (run.status !== 'running') {
           stopPolling();
         }
-      } catch {
+      }).catch(() => {
         // Ignore poll errors — will retry on next interval
-      }
+      });
     }, 2000);
 
     // Safety: stop polling after 60 seconds max
-    setTimeout(() => stopPolling(), 60000);
+    pollTimeoutRef.current = setTimeout(() => stopPolling(), 60000);
   }, [setCurrentRun, stopPolling]);
 
   const run = useCallback(async () => {
@@ -90,7 +96,6 @@ export function useRunWorkflow() {
       // Also start polling as a fallback — ensures UI updates even if socket fails
       startPolling(fullRun._id);
     } catch (err) {
-      console.error('[run] Execution failed:', err);
       setLastError(api.getApiErrorMessage(err, 'Unable to run this workflow. Please try again.'));
     }
   }, [meta, isDirty, isRunning, save, setCurrentRun, setLastError, joinRun, prepareSocket, startPolling]);

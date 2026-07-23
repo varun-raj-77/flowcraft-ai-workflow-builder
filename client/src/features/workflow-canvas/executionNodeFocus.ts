@@ -8,7 +8,7 @@ interface FocusExecutionNodeOptions {
   lastFocusedNodeId: string | null;
   nodes: readonly FocusableExecutionNode[];
   getViewport: () => { zoom: number };
-  setCenter: (x: number, y: number, options: { zoom: number; duration: number }) => void;
+  setCenter: (x: number, y: number, options: { zoom: number; duration: number }) => void | Promise<unknown>;
 }
 
 /**
@@ -29,7 +29,7 @@ export function focusExecutionNode({
   const node = nodes.find((item) => item.id === selectedNodeId);
   if (!node) return lastFocusedNodeId;
 
-  setCenter(node.position.x + 100, node.position.y + 30, {
+  void setCenter(node.position.x + 100, node.position.y + 30, {
     zoom: getViewport().zoom,
     duration: 250,
   });

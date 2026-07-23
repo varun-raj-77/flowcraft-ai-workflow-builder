@@ -1,4 +1,4 @@
-import { resolveTemplates, type ExecutionContext } from '../templateEngine';
+import { resolveTemplates } from '../templateEngine';
 import type { NodeExecutor } from './types';
 import { redactText } from '../../../utils/redact';
 
