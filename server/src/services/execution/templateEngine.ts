@@ -4,6 +4,29 @@
  */
 export type ExecutionContext = Map<string, Record<string, unknown>>;
 
+export interface ExecutionInputs {
+  input: Record<string, Record<string, unknown>>;
+  prev: Record<string, unknown>;
+  nodes: Record<string, Record<string, unknown>>;
+}
+
+/**
+ * Builds the shared JavaScript execution contract used by Transform and
+ * Condition nodes. API Call payloads live at input.<nodeId>.data while status
+ * and headers remain available on the same complete result wrapper.
+ */
+export function buildExecutionInputs(context: ExecutionContext): ExecutionInputs {
+  const input: Record<string, Record<string, unknown>> = {};
+  let prev: Record<string, unknown> = {};
+
+  for (const [nodeId, output] of context.entries()) {
+    input[nodeId] = output;
+    prev = output;
+  }
+
+  return { input, prev, nodes: input };
+}
+
 /**
  * Resolves all {{nodeId.path}} templates in a string against the context.
  * 

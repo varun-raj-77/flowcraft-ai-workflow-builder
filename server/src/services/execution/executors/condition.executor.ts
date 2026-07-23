@@ -1,4 +1,4 @@
-import { resolveTemplates, type ExecutionContext } from '../templateEngine';
+import { buildExecutionInputs, resolveTemplates } from '../templateEngine';
 import type { NodeExecutor } from './types';
 import { redactText } from '../../../utils/redact';
 
@@ -20,9 +20,10 @@ export const executeCondition: NodeExecutor = async ({ config, context }) => {
 
   let result: boolean;
   try {
+    const executionInputs = buildExecutionInputs(context);
     // eslint-disable-next-line no-new-func
-    const fn = new Function(`"use strict"; return (${resolved})`);
-    result = Boolean(fn());
+    const fn = new Function('input', 'prev', 'nodes', `"use strict"; return (${resolved})`);
+    result = Boolean(fn(executionInputs.input, executionInputs.prev, executionInputs.nodes));
   } catch (err: unknown) {
     // Instead of crashing, log the error and default to false
     const message = redactText(err instanceof Error ? err.message : String(err));

@@ -10,7 +10,7 @@ interface GeneratedWorkflowShape {
 }
 
 export interface AIConsistencyIssue {
-  code: 'AI_NONEXISTENT_UPSTREAM_NODE' | 'AI_KNOWN_ENDPOINT_FIELD_MISMATCH';
+  code: 'AI_NONEXISTENT_UPSTREAM_NODE' | 'AI_KNOWN_ENDPOINT_FIELD_MISMATCH' | 'AI_UNSAFE_API_COLLECTION_ACCESS';
   message: string;
   transformNodeId: string;
   apiNodeId?: string;
@@ -36,6 +36,7 @@ const VALUE_MEMBERS = new Set([
 
 const API_OUTPUT_MEMBERS = new Set(['headers', 'status']);
 const COLLECTION_CALLBACK_METHODS = ['every', 'filter', 'find', 'findIndex', 'flatMap', 'forEach', 'map', 'reduce', 'reduceRight', 'some'];
+const COLLECTION_METHOD_PATTERN = COLLECTION_CALLBACK_METHODS.join('|');
 
 function knownFields(url: unknown): string[] | null {
   if (typeof url !== 'string') return null;
@@ -117,6 +118,30 @@ function callbackFieldReferences(code: string): Array<{ nodeId: string; fields: 
       }
     }
   }
+  const aliasPattern = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*input\.([A-Za-z_$][\w$]*)(?:\?\.|\.)data(?:\s*\?\?\s*input\.\2)?\s*;?/g;
+  for (const assignment of code.matchAll(aliasPattern)) {
+    const methodPatternForAlias = new RegExp(
+      `\\b${escapeRegExp(assignment[1])}\\s*(?:\\?\\.|\\.)\\s*(${COLLECTION_CALLBACK_METHODS.join('|')})\\s*\\(`,
+      'g',
+    );
+    for (const methodMatch of code.matchAll(methodPatternForAlias)) {
+      const openIndex = methodMatch.index + methodMatch[0].lastIndexOf('(');
+      const closeIndex = findClosingParenthesis(code, openIndex);
+      if (closeIndex < 0) continue;
+      const argumentsSource = code.slice(openIndex + 1, closeIndex);
+      const parameters = callbackParameters(argumentsSource);
+      const itemParameter = methodMatch[1] === 'reduce' || methodMatch[1] === 'reduceRight'
+        ? parameters[1]
+        : parameters[0];
+      if (!itemParameter) continue;
+      const fieldPattern = new RegExp(`\\b${itemParameter}\\.([A-Za-z_$][\\w$]*)`, 'g');
+      for (const fieldMatch of argumentsSource.matchAll(fieldPattern)) {
+        if (!VALUE_MEMBERS.has(fieldMatch[1])) {
+          references.push({ nodeId: assignment[2], fields: [fieldMatch[1]] });
+        }
+      }
+    }
+  }
   return references;
 }
 
@@ -128,12 +153,82 @@ function endpointField(fields: string[]): string | undefined {
   return candidate;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasArrayGuard(code: string, expression: string): boolean {
+  return new RegExp(`\\bArray\\.isArray\\s*\\(\\s*${escapeRegExp(expression)}\\s*\\)`).test(code);
+}
+
+function unsafeApiCollectionAccess(
+  code: string,
+  apiNode: GeneratedNode,
+  transform: GeneratedNode,
+): AIConsistencyIssue | null {
+  const nodeId = escapeRegExp(apiNode.id);
+  const directWrapperMethod = new RegExp(
+    `\\binput\\.${nodeId}\\s*(?:\\?\\.|\\.)\\s*(${COLLECTION_METHOD_PATTERN})\\s*\\(`,
+  );
+  if (directWrapperMethod.test(code)) {
+    return {
+      code: 'AI_UNSAFE_API_COLLECTION_ACCESS',
+      transformNodeId: transform.id,
+      apiNodeId: apiNode.id,
+      message: `Transform "${transform.label}" calls an array method on the full result from API Call "${apiNode.label}". Read input.${apiNode.id}.data and verify it with Array.isArray before using collection methods.`,
+    };
+  }
+
+  const directPayloadMethod = new RegExp(
+    `\\binput\\.${nodeId}(?:\\?\\.|\\.)data\\s*(?:\\?\\.|\\.)\\s*(${COLLECTION_METHOD_PATTERN})\\s*\\(`,
+  );
+  if (directPayloadMethod.test(code)
+    && !hasArrayGuard(code, `input.${apiNode.id}.data`)
+    && !hasArrayGuard(code, `input.${apiNode.id}?.data`)) {
+    return {
+      code: 'AI_UNSAFE_API_COLLECTION_ACCESS',
+      transformNodeId: transform.id,
+      apiNodeId: apiNode.id,
+      message: `Transform "${transform.label}" uses API Call "${apiNode.label}" data as an array without validating it. Verify input.${apiNode.id}.data with Array.isArray and throw a clear type error before using collection methods.`,
+    };
+  }
+
+  const assignmentPattern = new RegExp(
+    `\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*input\\.${nodeId}((?:\\?\\.|\\.)data)?(?:\\s*\\?\\?\\s*input\\.${nodeId})?\\s*;?`,
+    'g',
+  );
+  for (const assignment of code.matchAll(assignmentPattern)) {
+    const alias = assignment[1];
+    const usesCollectionMethod = new RegExp(
+      `\\b${escapeRegExp(alias)}\\s*(?:\\?\\.|\\.)\\s*(${COLLECTION_METHOD_PATTERN})\\s*\\(`,
+    ).test(code);
+    if (!usesCollectionMethod) continue;
+    if (!assignment[2] || !hasArrayGuard(code, alias)) {
+      return {
+        code: 'AI_UNSAFE_API_COLLECTION_ACCESS',
+        transformNodeId: transform.id,
+        apiNodeId: apiNode.id,
+        message: `Transform "${transform.label}" uses "${alias}" as an array without safely resolving and validating the payload from API Call "${apiNode.label}". Read input.${apiNode.id}.data, verify "${alias}" with Array.isArray, and throw a clear type error before using collection methods.`,
+      };
+    }
+  }
+
+  return null;
+}
+
 /** Validates only contradictions proven by generated graph data or known static endpoint hints. */
 export function validateGeneratedWorkflowConsistency(workflow: GeneratedWorkflowShape): AIConsistencyIssue[] {
   const nodes = new Map(workflow.nodes.map((node) => [node.id, node]));
   const issues: AIConsistencyIssue[] = [];
   for (const transform of workflow.nodes.filter((node) => node.type === 'transform')) {
     const code = String(transform.config.transformCode ?? '');
+    for (const apiNode of workflow.nodes.filter((node) => node.type === 'api_call')) {
+      const unsafeAccess = unsafeApiCollectionAccess(code, apiNode, transform);
+      if (unsafeAccess) {
+        issues.push(unsafeAccess);
+        break;
+      }
+    }
     const references = [...inputReferences(code), ...callbackFieldReferences(code)];
     const checkedFields = new Set<string>();
     for (const reference of references) {

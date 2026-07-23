@@ -54,11 +54,19 @@ function SafeData({ value }: { value: unknown }) {
 function TransformDiagnosticDetails({ diagnostic }: { diagnostic: TransformDiagnostic }) {
   return <section className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[10px] dark:border-red-900/50 dark:bg-red-950/20" aria-label="Transform diagnostic">
     <p className="font-semibold text-red-800 dark:text-red-200">{diagnostic.message}</p>
+    <p className="mt-1 break-words"><span className="font-medium">Original exception:</span> {redactInspectionValue(diagnostic.originalError) as string}</p>
+    {diagnostic.failingLine && <p className="mt-1"><span className="font-medium">Generated source location:</span> line {diagnostic.failingLine}{diagnostic.failingColumn ? `, column ${diagnostic.failingColumn}` : ''}</p>}
     {diagnostic.referencedPath && <p className="mt-1"><span className="font-medium">Referenced path:</span> <code>{diagnostic.referencedPath}</code></p>}
     {diagnostic.upstreamNodeId && <p className="mt-1"><span className="font-medium">Previous node:</span> {diagnostic.upstreamNodeName ?? diagnostic.upstreamNodeId} ({diagnostic.upstreamNodeId})</p>}
     {diagnostic.availableFields.length > 0 && <p className="mt-1"><span className="font-medium">Available fields:</span> {diagnostic.availableFields.join(', ')}</p>}
     <p className="mt-1"><span className="font-medium">Suggested action:</span> {diagnostic.suggestion}</p>
-    <details className="mt-2"><summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">Technical details</summary><p className="mt-1 break-words">{redactInspectionValue(diagnostic.originalError) as string}</p></details>
+    <details className="mt-2"><summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">Technical details</summary>
+      {diagnostic.transformSource && <><p className="mt-2 font-medium">Generated Transform source</p>
+      <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded border border-red-200 bg-white p-2 font-mono text-[9px] dark:border-red-900/50 dark:bg-zinc-950">{redactInspectionValue(diagnostic.transformSource) as string}</pre></>}
+      {diagnostic.originalStack && <><p className="mt-2 font-medium">Stack trace</p><pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded border border-red-200 bg-white p-2 font-mono text-[9px] dark:border-red-900/50 dark:bg-zinc-950">{redactInspectionValue(diagnostic.originalStack) as string}</pre></>}
+      {diagnostic.runtimeContext && <><p className="mt-2 font-medium">Sanitized runtime context</p>
+      <SafeData value={diagnostic.runtimeContext} /></>}
+    </details>
   </section>;
 }
 

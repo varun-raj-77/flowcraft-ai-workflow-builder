@@ -14,6 +14,26 @@ describe('transform diagnostics', () => {
   it('preserves the original error and falls back when no referenced path is reliable', () => {
     const diagnostic = createTransformDiagnostic('throw new Error("bad data")', { item: { id: 1 } }, 'bad data');
     expect(diagnostic.originalError).toBe('bad data');
+    expect(diagnostic.code).toBe('TRANSFORM_EXECUTION_FAILED');
     expect(diagnostic.referencedPath).toBeUndefined();
+  });
+
+  it('keeps runtime diagnostics shallow, bounded, and free of sensitive headers', () => {
+    const diagnostic = createTransformDiagnostic(
+      'throw new Error("boom")',
+      {
+        api: {
+          data: Array.from({ length: 25 }, (_, index) => ({ index })),
+          headers: { authorization: 'Bearer hidden', 'x-request-id': 'safe' },
+        },
+      },
+      { message: 'token=hidden', prev: { password: 'hidden', safe: true } },
+    );
+    const serialized = JSON.stringify(diagnostic);
+    expect(diagnostic.originalError).toBe('token=[REDACTED]');
+    expect(serialized).not.toContain('Bearer hidden');
+    expect(serialized).not.toContain('"authorization"');
+    expect(serialized).not.toContain('"password"');
+    expect(serialized).toContain('[15 more items]');
   });
 });

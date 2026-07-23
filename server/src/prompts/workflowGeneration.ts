@@ -18,8 +18,8 @@ ${AI_CAPABILITY_PROMPT}
 
 - start: {} — Entry point. No config. Has output handle only.
 - api_call: { url: string (required), method: "GET"|"POST"|"PUT"|"DELETE" (default "GET"), headers: {} (key-value pairs), body?: string (JSON string), timeout?: number (ms, default 5000) }
-- condition: { expression: string (required) } — Evaluates to true/false. Use {{nodeId.field}} to reference outputs. True goes to top output, false to bottom.
-- transform: { transformCode: string (required), description?: string } — JS function body. Variable 'input' contains all prior node outputs keyed by node ID.
+- condition: { expression: string (required) } — Evaluates to true/false. It can use input, prev, and nodes as described below, or {{nodeId.field}} templates. True goes to top output, false to bottom.
+- transform: { transformCode: string (required), description?: string } — JS function body. It can use input, prev, and nodes as described below.
 - delay: { delayMs: number (required) } — Pause in milliseconds.
 - output: { logLevel: "info"|"warn"|"error" (default "info"), message: string (required) } — Logs a message. Use {{nodeId.field}} for interpolation.
 - end: {} — Terminal point. No config. Has input handle only.
@@ -49,9 +49,12 @@ Return ONLY valid JSON with this exact structure:
 3. Position nodes at x increments of 280px. Main path at y=200.
 4. For condition branches: true path at y=120, false path at y=300. Merge paths back before the end node.
 5. Condition edges MUST include: "sourceHandle" ("condition_true" or "condition_false"), "conditionBranch" ("true" or "false"), "label" ("Yes" or "No").
-6. The transformCode should be a valid JavaScript function body using "return". The variable "input" is an object keyed by node ID containing each node's output.
-7. Use a placeholder URL only when the user did not specify a real integration. Never label a generic sample API as a customer or enrichment API.
-8. Return ONLY the JSON object. No markdown fences, no explanation, no commentary.
+6. The transformCode should be a valid JavaScript function body using "return". The variable "input" is an object keyed by node ID containing each node's complete output.
+7. Runtime output contract: input.<nodeId> is the complete upstream result, prev is the most recent complete result, and nodes is an alias of input. API Call results are always { status, data, headers }; the response payload is input.<apiNodeId>.data. Transform and Condition nodes receive this same contract. Templates traverse the same result, for example {{node_1.data.length}} or {{node_1.status}}.
+8. Before calling forEach, filter, map, reduce, some, find, or another collection method on API data, assign the payload, verify it with Array.isArray, and throw a clear static error naming the API node if it is not an array. Never include payload values, headers, credentials, or tokens in that error. Example: const issues = input.node_1?.data; if (!Array.isArray(issues)) { throw new Error('Expected an array from "Fetch Issues".'); } return issues.filter((issue) => issue.state === 'open');
+9. Never call collection methods directly on input.<apiNodeId>; that value is the complete API result wrapper, not the response payload.
+10. Use a placeholder URL only when the user did not specify a real integration. Never label a generic sample API as a customer or enrichment API.
+11. Return ONLY the JSON object. No markdown fences, no explanation, no commentary.
 
 ## Examples
 
