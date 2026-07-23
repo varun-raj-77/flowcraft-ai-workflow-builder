@@ -78,6 +78,65 @@ describe('downstream execution contract', () => {
     } satisfies Partial<TransformExecutionError>);
   });
 
+  it('diagnoses the GitHub Issues 401 object response without retaining credentials', async () => {
+    const generatedTransform = [
+      'const issues = input.node_1?.data;',
+      'if (!Array.isArray(issues)) {',
+      '  throw new Error(\'Expected an array from "Fetch GitHub Issues".\');',
+      '}',
+      'const grouped = { high: [], medium: [], low: [] };',
+      'issues.forEach((issue) => grouped.low.push(issue));',
+      'return grouped;',
+    ].join('\n');
+    const context: ExecutionContext = new Map([
+      ['node_1', {
+        status: 401,
+        data: {
+          message: 'Requires authentication',
+          documentation_url: 'https://docs.github.com/rest/issues/issues#list-issues-assigned-to-the-authenticated-user',
+          status: '401',
+        },
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          authorization: 'Bearer github-secret',
+          'set-cookie': 'session=hidden',
+        },
+      }],
+    ]);
+
+    let diagnostic: TransformExecutionError['diagnostic'] | undefined;
+    try {
+      await executeTransform({ nodeId: 'node_2', config: { transformCode: generatedTransform }, context });
+    } catch (error) {
+      expect(error).toBeInstanceOf(TransformExecutionError);
+      diagnostic = (error as TransformExecutionError).diagnostic;
+    }
+
+    expect(diagnostic).toMatchObject({
+      code: 'TRANSFORM_INPUT_TYPE_MISMATCH',
+      message: 'Transform expected an array, but input.node_1.data contained object (HTTP 401).',
+      originalError: 'Expected an array from "Fetch GitHub Issues".',
+      transformSource: generatedTransform,
+      failingLine: 3,
+      referencedPath: 'input.node_1.data',
+      runtimeContext: {
+        input: {
+          node_1: {
+            status: 401,
+            data: expect.objectContaining({ message: 'Requires authentication', status: '401' }),
+            headers: { 'content-type': 'application/json; charset=utf-8' },
+          },
+        },
+        prev: expect.objectContaining({ status: 401 }),
+      },
+    });
+    expect(diagnostic?.originalStack).toContain('flowcraft-transform.js');
+    expect(JSON.stringify(diagnostic)).not.toContain('github-secret');
+    expect(JSON.stringify(diagnostic)).not.toContain('session=hidden');
+    expect(JSON.stringify(diagnostic)).not.toContain('authorization');
+    expect(JSON.stringify(diagnostic)).not.toContain('set-cookie');
+  });
+
   it('lets conditions inspect prior results through input while preserving templates', async () => {
     const context = contextWithApiResult();
     context.set('node_2', { high: [{ id: 1 }], low: [] });

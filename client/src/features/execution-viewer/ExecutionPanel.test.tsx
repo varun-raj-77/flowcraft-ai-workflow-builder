@@ -104,13 +104,16 @@ describe('ExecutionPanel', () => {
   });
 
   it('renders structured transform diagnostics while older raw errors remain safe', () => {
-    useExecutionStore.setState({ currentRun: { ...liveRun, stepLogs: [{ nodeId: 'transform', nodeType: 'transform', nodeLabel: 'Transform Data', status: 'failed', error: 'Transform failed', diagnostic: { code: 'TRANSFORM_MISSING_INPUT_FIELD', message: 'Transform failed because input.api.data.body is unavailable.', originalError: "Cannot read properties of undefined (reading 'length')", nodeId: 'transform', nodeName: 'Transform Data', upstreamNodeId: 'api', upstreamNodeName: 'Fetch Data', referencedPath: 'input.api.data.body', availableFields: ['id', 'name'], suggestion: 'Use an available field.' } }] } });
+    useExecutionStore.setState({ currentRun: { ...liveRun, stepLogs: [{ nodeId: 'transform', nodeType: 'transform', nodeLabel: 'Transform Data', status: 'failed', error: 'Transform failed', diagnostic: { code: 'TRANSFORM_MISSING_INPUT_FIELD', message: 'Transform failed because input.api.data.body is unavailable.', originalError: "Cannot read properties of undefined (reading 'length')", originalStack: 'Error: missing\n at flowcraft-transform.js:5:2', transformSource: 'return input.api.data.body.length;', failingLine: 1, failingColumn: 2, runtimeContext: { input: { api: { status: 200, data: { id: 1 } } }, prev: { status: 200, data: { id: 1 } } }, nodeId: 'transform', nodeName: 'Transform Data', upstreamNodeId: 'api', upstreamNodeName: 'Fetch Data', referencedPath: 'input.api.data.body', availableFields: ['id', 'name'], suggestion: 'Use an available field.' } }] } });
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('button', { name: /Transform Data/i }));
     expect(screen.getByText(/Referenced path:/i)).toBeTruthy();
     expect(screen.getByText(/Fetch Data \(api\)/i)).toBeTruthy();
     fireEvent.click(screen.getByText('Technical details'));
     expect(screen.getByText(/Cannot read properties/i)).toBeTruthy();
+    expect(screen.getByText('Generated Transform source')).toBeTruthy();
+    expect(screen.getByText('Stack trace')).toBeTruthy();
+    expect(screen.getByText('Sanitized runtime context')).toBeTruthy();
   });
 
   it('supports keyboard tab navigation', () => {

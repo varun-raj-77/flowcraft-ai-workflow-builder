@@ -9,8 +9,8 @@ import { topologicalSort, findSkippedNodes } from './dagUtils';
 import { type ExecutionContext, truncateOutput } from './templateEngine';
 import { getExecutor } from './executors';
 import { getIO } from '../../config/socket';
-import { redactText } from '../../utils/redact';
-import { TransformExecutionError } from './executors/transformDiagnostics';
+import { redactSecrets, redactText } from '../../utils/redact';
+import { TransformExecutionError, type TransformDiagnostic } from './executors/transformDiagnostics';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -216,13 +216,15 @@ export async function runExecution(
       } catch (err: unknown) {
         // ── Record failure ──────────────────────────────
         const now = new Date();
-        const transformDiagnostic = err instanceof TransformExecutionError ? {
-          ...err.diagnostic,
-          originalError: redactText(err.diagnostic.originalError),
-          nodeId,
-          nodeName: node.label,
-          upstreamNodeName: err.diagnostic.upstreamNodeId ? nodeMap.get(err.diagnostic.upstreamNodeId)?.label : undefined,
-        } : undefined;
+        const transformDiagnostic = err instanceof TransformExecutionError
+          ? redactSecrets({
+            ...err.diagnostic,
+            originalError: redactText(err.diagnostic.originalError),
+            nodeId,
+            nodeName: node.label,
+            upstreamNodeName: err.diagnostic.upstreamNodeId ? nodeMap.get(err.diagnostic.upstreamNodeId)?.label : undefined,
+          }) as TransformDiagnostic & Record<string, unknown> & { nodeId: string; nodeName: string; upstreamNodeName?: string }
+          : undefined;
         const message = transformDiagnostic?.message ?? redactText(err instanceof Error ? err.message : String(err));
 
         run.stepLogs[logIndex].status = 'failed';

@@ -12,7 +12,12 @@ export const executeTransform: NodeExecutor = async ({ config, context }) => {
     // 'prev' = the most recent node's output (convenience alias)
     // 'nodes' = same as input (alias)
     // eslint-disable-next-line no-new-func
-    const fn = new Function('input', 'prev', 'nodes', `"use strict"; ${code}`);
+    const fn = new Function(
+      'input',
+      'prev',
+      'nodes',
+      `"use strict";\n${code}\n//# sourceURL=flowcraft-transform.js`,
+    );
     const result = fn(executionInputs.input, executionInputs.prev, executionInputs.nodes);
 
     const output = (result !== null && result !== undefined && typeof result === 'object')
@@ -22,6 +27,10 @@ export const executeTransform: NodeExecutor = async ({ config, context }) => {
     return { output };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new TransformExecutionError(createTransformDiagnostic(code, executionInputs.input, message));
+    throw new TransformExecutionError(createTransformDiagnostic(code, executionInputs.input, {
+      message,
+      stack: err instanceof Error ? err.stack : undefined,
+      prev: executionInputs.prev,
+    }));
   }
 };
