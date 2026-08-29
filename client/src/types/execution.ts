@@ -41,6 +41,12 @@ export interface StepLog {
 export interface ExecutionRun {
   _id: string;
   workflowId: string;
+  /** Absent only for legacy runs created before immutable revision pinning. */
+  workflowRevisionId?: string;
+  /** Absent only for legacy runs created before immutable revision pinning. */
+  workflowRevision?: number;
+  /** Absent only for legacy runs created before immutable revision pinning. */
+  definitionHash?: string;
   userId: string;
   status: ExecutionStatus;
   startedAt: string;
@@ -51,4 +57,18 @@ export interface ExecutionRun {
   executionOrder: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ExecutionRevisionProvenance {
+  status: 'pinned' | 'legacy' | 'unavailable' | 'integrity_error';
+  runId: string;
+  workflowId: string;
+  workflowRevision?: number;
+  workflowRevisionId?: string;
+  definitionHash?: string;
+  currentRevision?: number;
+  isCurrent: boolean;
+  canView: boolean;
+  canCompare: boolean;
+  message?: string;
 }

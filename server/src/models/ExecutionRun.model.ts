@@ -16,6 +16,9 @@ export interface IStepLog {
 
 export interface IExecutionRun {
   workflowId: mongoose.Types.ObjectId;
+  workflowRevisionId?: mongoose.Types.ObjectId;
+  workflowRevision?: number;
+  definitionHash?: string;
   userId: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt: Date;
@@ -58,6 +61,18 @@ const executionRunSchema = new Schema<IExecutionRun>(
       ref: 'Workflow',
       required: true,
     },
+    workflowRevisionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'WorkflowRevision',
+    },
+    workflowRevision: {
+      type: Number,
+      min: 1,
+    },
+    definitionHash: {
+      type: String,
+      match: /^[a-f0-9]{64}$/,
+    },
     userId: {
       type: String,
       required: true,
@@ -89,6 +104,7 @@ const executionRunSchema = new Schema<IExecutionRun>(
           ...ret,
           _id: ret._id.toString(),
           workflowId: ret.workflowId.toString(),
+          workflowRevisionId: ret.workflowRevisionId?.toString(),
           __v: undefined,
         };
       },
@@ -99,6 +115,7 @@ const executionRunSchema = new Schema<IExecutionRun>(
 // "Show execution history for this workflow, newest first"
 executionRunSchema.index({ workflowId: 1, createdAt: -1 });
 executionRunSchema.index({ userId: 1 });
+executionRunSchema.index({ workflowRevisionId: 1 });
 
 export const ExecutionRun = mongoose.model<IExecutionRun>(
   'ExecutionRun',

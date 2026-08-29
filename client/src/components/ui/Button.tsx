@@ -27,13 +27,13 @@ type ButtonProps = ButtonAsButton | ButtonAsLink;
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    'bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200',
+    'border border-violet-500/60 bg-violet-600 text-white shadow-sm shadow-violet-950/30 hover:border-violet-400 hover:bg-violet-500',
   secondary:
-    'bg-zinc-100 text-zinc-900 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700',
+    'border border-[var(--border-default)] bg-[var(--surface-raised)] text-[var(--text-primary)] hover:border-zinc-500 hover:bg-[var(--surface-hover)]',
   ghost:
-    'bg-transparent text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800',
+    'border border-transparent bg-transparent text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]',
   danger:
-    'bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600',
+    'border border-red-500/50 bg-red-500/15 text-red-300 hover:border-red-400/70 hover:bg-red-500/25',
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -52,8 +52,8 @@ export function Button({
 }: ButtonProps) {
   const classes = cn(
     'inline-flex items-center justify-center gap-2 rounded-lg font-medium',
-    'transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400',
-    'disabled:pointer-events-none disabled:opacity-50',
+    'transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--surface-shell)]',
+    'disabled:pointer-events-none disabled:border-transparent disabled:bg-[var(--surface-base)] disabled:text-[var(--text-disabled)] disabled:shadow-none disabled:opacity-100',
     variantStyles[variant],
     sizeStyles[size],
     className

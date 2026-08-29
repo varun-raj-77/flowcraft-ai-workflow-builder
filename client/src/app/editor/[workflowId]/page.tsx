@@ -6,6 +6,8 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useExecutionStore } from '@/stores/executionStore';
+import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
+import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 import { NodePalette } from '@/features/workflow-canvas/NodePalette';
 import { CanvasToolbar } from '@/features/workflow-canvas/CanvasToolbar';
 import { WorkflowCanvas } from '@/features/workflow-canvas/WorkflowCanvas';
@@ -14,6 +16,10 @@ import { ExecutionPanel } from '@/features/execution-viewer/ExecutionPanel';
 import { AIGeneratorModal } from '@/features/ai-generator/AIGeneratorModal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
+import { HistoricalRevisionBanner } from '@/features/revision-history/HistoricalRevisionBanner';
+import { RevisionHistoryPanel } from '@/features/revision-history/RevisionHistoryPanel';
+import { RevisionComparisonBanner } from '@/features/revision-comparison/RevisionComparisonBanner';
+import { RevisionComparisonPanel } from '@/features/revision-comparison/RevisionComparisonPanel';
 import * as api from '@/lib/api';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -23,11 +29,19 @@ export default function EditorPage() {
   const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
   const clearWorkflow = useWorkflowStore((s) => s.clearWorkflow);
   const isInspectorMaximized = useUIStore((s) => s.isExecutionInspectorMaximized);
+  const isHistorical = useRevisionHistoryStore((s) => s.previewRevision !== null);
+  const resetRevisionHistory = useRevisionHistoryStore((s) => s.reset);
+  const isComparing = useRevisionComparisonStore((s) => s.comparison !== null);
+  const resetRevisionComparison = useRevisionComparisonStore((s) => s.reset);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     async function loadWorkflow() {
+      resetRevisionHistory();
+      resetRevisionComparison();
+      useUIStore.getState().selectNode(null);
+      useUIStore.getState().closeAIModal();
       setLoadState('loading');
       setLoadError('');
 
@@ -60,7 +74,7 @@ export default function EditorPage() {
 
     // Don't clear on unmount — preserves store state during navigation
     return () => {};
-  }, [params.workflowId, setWorkflow, clearWorkflow]);
+  }, [params.workflowId, setWorkflow, clearWorkflow, resetRevisionHistory, resetRevisionComparison]);
 
   // ── Error state ──────────────────────────────────────────
   if (loadState === 'error') {
@@ -80,9 +94,11 @@ export default function EditorPage() {
     <ReactFlowProvider>
       <div className="flex flex-1 flex-col overflow-hidden">
         <CanvasToolbar />
+        <HistoricalRevisionBanner />
+        <RevisionComparisonBanner />
 
         <div className="flex flex-1 overflow-hidden">
-          {!isInspectorMaximized && <NodePalette />}
+          {!isInspectorMaximized && !isHistorical && !isComparing && <NodePalette />}
 
           <div className="flex flex-1 flex-col overflow-hidden">
             {!isInspectorMaximized && (loadState === 'loading' ? (
@@ -95,10 +111,11 @@ export default function EditorPage() {
             <ExecutionPanel />
           </div>
 
-          {!isInspectorMaximized && <ConfigPanel />}
+          {!isInspectorMaximized && (isComparing ? <RevisionComparisonPanel /> : <ConfigPanel />)}
         </div>
       </div>
-      <AIGeneratorModal />
+      <AIGeneratorModal mode="current-workflow" />
+      <RevisionHistoryPanel />
     </ReactFlowProvider>
   );
 }

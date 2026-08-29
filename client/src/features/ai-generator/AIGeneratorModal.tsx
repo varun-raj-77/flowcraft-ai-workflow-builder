@@ -7,9 +7,11 @@ import { useWorkflowStore } from '@/stores/workflowStore';
 import { Button } from '@/components/ui/Button';
 import { GenerationValidationFeedback } from './GenerationValidationFeedback';
 import * as api from '@/lib/api';
-import type { Workflow } from '@/types';
+import type { Workflow, WorkflowAiPromptContext } from '@/types';
 import type { CapabilityCoverage } from '@/types';
 import { useModalDialog } from '@/lib/useModalDialog';
+import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
+import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 
 const EXAMPLE_PROMPTS = [
   'Fetch users from an API, filter active users, and log the count',
@@ -18,70 +20,126 @@ const EXAMPLE_PROMPTS = [
   'Fetch order data, wait 2 seconds, then log the total revenue',
 ];
 
-const GENERATION_STAGES = [
-  'Understanding workflow...',
-  'Designing execution graph...',
-  'Selecting node types...',
-  'Connecting workflow...',
-  'Validating...',
-  'Ready',
-];
+type PromptContextState =
+  | { status: 'idle' | 'loading' | 'none' }
+  | { status: 'available'; context: Extract<WorkflowAiPromptContext, { status: 'available' }> }
+  | { status: 'error'; message: string };
 
-export function AIGeneratorModal() {
+interface AIGeneratorModalProps {
+  mode?: 'create' | 'current-workflow';
+}
+
+export function AIGeneratorModal({ mode = 'create' }: AIGeneratorModalProps) {
   const isOpen = useUIStore((s) => s.isAIModalOpen);
   const closeModal = useUIStore((s) => s.closeAIModal);
   const applyGeneratedWorkflow = useWorkflowStore((s) => s.applyGeneratedWorkflow);
+  const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
+  const workflowId = useWorkflowStore((s) => s.meta?._id || null);
+  const currentRevision = useWorkflowStore((s) => s.meta?.currentRevision);
+  const isHistorical = useRevisionHistoryStore((s) => s.previewRevision !== null);
+  const isComparing = useRevisionComparisonStore((s) => s.comparison !== null);
+  const isReadOnly = isHistorical || isComparing;
   const router = useRouter();
 
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationStage, setGenerationStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<CapabilityCoverage | null>(null);
+  const [promptContext, setPromptContext] = useState<PromptContextState>({ status: 'idle' });
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const contextRequestToken = useRef(0);
+  const generationInFlight = useRef(false);
   const dialogRef = useModalDialog({
-    isOpen,
+    isOpen: isOpen && !isReadOnly,
     onClose: closeModal,
     canClose: !isGenerating,
     initialFocusRef: promptRef,
   });
 
+  const loadPromptContext = useCallback(async () => {
+    const requestToken = contextRequestToken.current + 1;
+    contextRequestToken.current = requestToken;
+    setPrompt('');
+    setError(null);
+    setCoverage(null);
+
+    if (mode !== 'current-workflow' || !workflowId || !currentRevision) {
+      setPromptContext({ status: 'none' });
+      return;
+    }
+
+    setPromptContext({ status: 'loading' });
+    try {
+      const context = await api.getWorkflowAiPromptContext(workflowId);
+      if (contextRequestToken.current !== requestToken) return;
+      if (context.status === 'available') {
+        setPrompt(context.prompt);
+        setPromptContext({ status: 'available', context });
+      } else if (context.status === 'none') {
+        setPromptContext({ status: 'none' });
+      } else {
+        setPromptContext({ status: 'error', message: context.message });
+      }
+    } catch (contextError) {
+      if (contextRequestToken.current !== requestToken) return;
+      setPromptContext({
+        status: 'error',
+        message: api.getApiErrorMessage(contextError, 'AI prompt history could not be loaded.'),
+      });
+    }
+  }, [mode, workflowId, currentRevision]);
+
   useEffect(() => {
-    if (!isGenerating) return;
-    const timer = window.setInterval(() => {
-      setGenerationStage((stage) => Math.min(stage + 1, GENERATION_STAGES.length - 2));
-    }, 900);
-    return () => window.clearInterval(timer);
-  }, [isGenerating]);
+    if (!isOpen || isReadOnly) {
+      contextRequestToken.current += 1;
+      return;
+    }
+    void loadPromptContext();
+    return () => { contextRequestToken.current += 1; };
+  }, [isOpen, isReadOnly, loadPromptContext]);
 
   const handleGenerate = useCallback(async () => {
-    if (!prompt.trim() || isGenerating) return;
+    if (!prompt.trim() || generationInFlight.current || useRevisionHistoryStore.getState().previewRevision || useRevisionComparisonStore.getState().comparison) return;
 
+    generationInFlight.current = true;
     setIsGenerating(true);
-    setGenerationStage(0);
     setError(null);
 
     try {
+      const workflowIdAtStart = mode === 'current-workflow' ? workflowId : null;
+      const revisionAtStart = mode === 'current-workflow' ? currentRevision : undefined;
+      if (mode === 'current-workflow' && (!workflowIdAtStart || !revisionAtStart)) {
+        setError('Save this workflow before regenerating it with AI.');
+        return;
+      }
+
+      if (workflowIdAtStart && revisionAtStart) {
+        const persisted = await api.regenerateWorkflow(workflowIdAtStart, {
+          prompt: prompt.trim(),
+          expectedRevision: revisionAtStart,
+        });
+        if (useWorkflowStore.getState().meta?._id !== workflowIdAtStart) return;
+        if (useRevisionHistoryStore.getState().previewRevision || useRevisionComparisonStore.getState().comparison) return;
+        setWorkflow(persisted);
+        void useRevisionHistoryStore.getState().refreshHistory(workflowIdAtStart);
+        closeModal();
+        return;
+      }
+
       const result = await api.generateWorkflow(prompt.trim());
-      setGenerationStage(GENERATION_STAGES.length - 1);
+      if (useRevisionHistoryStore.getState().previewRevision || useRevisionComparisonStore.getState().comparison) return;
       const resultCoverage = result.generationMetadata.capabilityCoverage;
       if (!resultCoverage?.isComplete) {
         setCoverage(resultCoverage ?? null);
         return;
       }
 
-      // Build a full Workflow shape for the store
-      const workflow: Workflow = {
-        _id: '',
-        userId: '',
+      const workflow: Pick<Workflow, 'name' | 'description' | 'nodes' | 'edges' | 'generationMetadata'> = {
         name: result.name || 'AI Generated Workflow',
         description: result.description,
         nodes: result.nodes,
         edges: result.edges,
-        isGeneratedByAI: true,
         generationMetadata: result.generationMetadata,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       };
 
       // A complete generation is one atomic workflow-history entry.
@@ -98,9 +156,10 @@ export function AIGeneratorModal() {
         setError('Something went wrong. Please try again.');
       }
     } finally {
+      generationInFlight.current = false;
       setIsGenerating(false);
     }
-  }, [prompt, isGenerating, applyGeneratedWorkflow, closeModal, router]);
+  }, [prompt, mode, workflowId, currentRevision, setWorkflow, applyGeneratedWorkflow, closeModal, router]);
 
   const handleExampleClick = useCallback((example: string) => {
     setPrompt(example);
@@ -108,7 +167,7 @@ export function AIGeneratorModal() {
     setCoverage(null);
   }, []);
 
-  if (!isOpen) return null;
+  if (!isOpen || isReadOnly) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -126,16 +185,17 @@ export function AIGeneratorModal() {
         aria-labelledby="ai-generator-title"
         aria-describedby="ai-generator-description"
         tabIndex={-1}
-        className="relative z-10 mx-4 flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col rounded-xl border border-zinc-200 bg-white shadow-2xl outline-none dark:border-zinc-700 dark:bg-zinc-900"
+        className="relative z-10 mx-4 flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--border-default)] bg-[var(--surface-overlay)] shadow-2xl shadow-black/60 outline-none"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-700">
+        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
           <div>
-            <h2 id="ai-generator-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            <p className="fc-kicker mb-1 text-violet-400">AI builder</p>
+            <h2 id="ai-generator-title" className="text-base font-semibold text-[var(--text-primary)]">
               ✦ Generate with AI
             </h2>
-            <p id="ai-generator-description" className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-              Describe your workflow in plain English.
+            <p id="ai-generator-description" className="mt-1 text-xs text-[var(--text-muted)]">
+              Describe the outcome, inputs, decisions, and output.
             </p>
           </div>
           <button
@@ -143,7 +203,7 @@ export function AIGeneratorModal() {
             onClick={closeModal}
             disabled={isGenerating}
             aria-label="Close AI generator"
-            className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            className="fc-focus rounded-md p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             ✕
           </button>
@@ -151,9 +211,22 @@ export function AIGeneratorModal() {
 
         {/* Body */}
         <div className="min-h-0 overflow-y-auto px-5 py-4">
+          {promptContext.status === 'loading' && (
+            <div role="status" className="mb-3 flex items-center gap-2 rounded-lg border border-[var(--border-faint)] bg-[var(--surface-base)] px-3 py-2 text-xs text-[var(--text-muted)]">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--border-active)] border-t-violet-400" />
+              Loading saved AI prompt…
+            </div>
+          )}
+          {promptContext.status === 'error' && (
+            <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2">
+              <p className="text-xs text-red-300">{promptContext.message}</p>
+              <Button variant="ghost" size="sm" onClick={() => { void loadPromptContext(); }}>Retry</Button>
+            </div>
+          )}
           {/* Prompt input */}
           <textarea
             ref={promptRef}
+            aria-label="Workflow prompt"
             value={prompt}
             onChange={(e) => {
               setPrompt(e.target.value);
@@ -167,31 +240,39 @@ export function AIGeneratorModal() {
             }}
             placeholder="e.g., Fetch data from an API, check if the response is valid, and log the result..."
             rows={4}
-            className="w-full resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-            disabled={isGenerating}
+            className="fc-control min-h-32 w-full resize-none px-3 py-3 text-sm leading-6 placeholder:text-[var(--text-muted)] focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20"
+            disabled={isGenerating || promptContext.status === 'loading'}
           />
 
           {/* Character count */}
-          <div className="mt-1.5 flex justify-between">
-            <p className="text-[10px] text-zinc-400">
+          <div className="mt-2 flex justify-between">
+            <p className="text-[10px] text-[var(--text-muted)]">
               Ctrl+Enter to generate
             </p>
-            <p className="text-[10px] text-zinc-400">
+            <p className="font-mono text-[10px] text-[var(--text-muted)]">
               {prompt.length}/2000
             </p>
           </div>
 
-          {!isGenerating && !prompt.trim() && (
-            <div className="mt-4 rounded-xl border border-dashed border-violet-200 bg-violet-50/50 px-4 py-3 text-center dark:border-violet-900/60 dark:bg-violet-950/20">
-              <p className="text-xs font-medium text-violet-800 dark:text-violet-200">Start with the outcome you want</p>
-              <p className="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">Include the data source, the decision to make, and what should happen next.</p>
+          {promptContext.status === 'available' && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-1.5 text-[11px] text-violet-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+              <p>Based on the prompt used to generate this workflow.</p>
+              <span className="text-[var(--text-muted)]">Preserved from v{promptContext.context.promptRevision}.</span>
+            </div>
+          )}
+
+          {!isGenerating && promptContext.status === 'none' && !prompt.trim() && (
+            <div className="mt-4 rounded-xl border border-dashed border-violet-500/25 bg-violet-500/5 px-4 py-3 text-center">
+              <p className="text-xs font-medium text-violet-200">Start with the outcome you want</p>
+              <p className="mt-1 text-[11px] text-[var(--text-muted)]">Include the data source, the decision to make, and what should happen next.</p>
             </div>
           )}
 
           {/* Error */}
           {error && (
-            <div role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-950/30">
-              <p className="text-xs text-red-700 dark:text-red-400">{error}</p>
+            <div role="alert" className="mt-3 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2">
+              <p className="text-xs text-red-300">{error}</p>
             </div>
           )}
           {coverage && !coverage.isComplete && <div className="mt-3"><GenerationValidationFeedback coverage={coverage} /></div>}
@@ -199,16 +280,16 @@ export function AIGeneratorModal() {
           {/* Example prompts */}
           {!isGenerating && (
             <div className="mt-4">
-              <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+              <p className="fc-kicker mb-2 text-[var(--text-muted)]">
                 Try an example
               </p>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="grid gap-1.5">
                 {EXAMPLE_PROMPTS.map((example) => (
                   <button
                     type="button"
                     key={example}
                     onClick={() => handleExampleClick(example)}
-                    className="rounded-md bg-zinc-100 px-2.5 py-1 text-[11px] text-zinc-600 transition-colors hover:bg-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                    className="fc-focus rounded-md border border-[var(--border-faint)] bg-[var(--surface-base)] px-3 py-2 text-left text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border-subtle)] hover:bg-[var(--surface-hover)]"
                   >
                     {example.length > 50 ? example.slice(0, 50) + '…' : example}
                   </button>
@@ -219,26 +300,22 @@ export function AIGeneratorModal() {
 
           {/* Loading state */}
           {isGenerating && (
-            <div role="status" aria-live="polite" className="mt-4 rounded-xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4 dark:border-violet-900/50 dark:from-violet-950/30 dark:to-zinc-900">
+            <div role="status" aria-live="polite" className="mt-4 rounded-xl border border-violet-500/25 bg-violet-500/5 p-4">
               <div className="flex items-center gap-3">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-600 text-[10px] font-semibold text-white shadow-sm animate-pulse">AI</span>
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-violet-400/30 border-t-violet-300" />
               <div>
-                <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  {GENERATION_STAGES[generationStage]}
-                </p>
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                  This usually takes 5–15 seconds.
+                <p className="text-xs font-medium text-[var(--text-primary)]">Building workflow…</p>
+                <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
+                  Generating and validating the workflow. Changes are applied only after validation.
                 </p>
               </div>
               </div>
-              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-950"><div className="h-full rounded-full bg-violet-600 transition-all duration-500 ease-out" style={{ width: `${((generationStage + 1) / GENERATION_STAGES.length) * 100}%` }} /></div>
-              <div className="mt-3 space-y-1">{GENERATION_STAGES.slice(0, generationStage + 1).map((stage, index) => <p key={stage} className={index === generationStage ? 'text-xs font-medium text-violet-800 dark:text-violet-200' : 'text-[10px] text-zinc-400 dark:text-zinc-500'}><span className="mr-2">{index === generationStage ? '•' : '✓'}</span>{stage}</p>)}</div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-700">
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] bg-[var(--surface-base)] px-5 py-3">
           <Button variant="ghost" size="sm" onClick={closeModal} disabled={isGenerating}>
             Cancel
           </Button>
@@ -247,7 +324,7 @@ export function AIGeneratorModal() {
             size="sm"
             onClick={handleGenerate}
             isLoading={isGenerating}
-            disabled={!prompt.trim() || prompt.length > 2000}
+            disabled={!prompt.trim() || prompt.length > 2000 || promptContext.status === 'loading'}
           >
             Generate Workflow
           </Button>

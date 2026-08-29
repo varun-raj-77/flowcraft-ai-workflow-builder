@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from 'react';
 
 interface ShortcutHandlers {
+  enabled?: boolean;
   onSave?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
@@ -10,9 +11,10 @@ interface ShortcutHandlers {
  * Registers global keyboard shortcuts for the editor.
  * Ctrl+S / Cmd+S → save
  */
-export function useKeyboardShortcuts({ onSave, onUndo, onRedo }: ShortcutHandlers) {
+export function useKeyboardShortcuts({ enabled = true, onSave, onUndo, onRedo }: ShortcutHandlers) {
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
+      if (!enabled) return;
       const isModifier = event.metaKey || event.ctrlKey;
       const target = event.target as HTMLElement;
       const isTextEditing = !!target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]');
@@ -29,7 +31,7 @@ export function useKeyboardShortcuts({ onSave, onUndo, onRedo }: ShortcutHandler
         onSave?.();
       }
     },
-    [onSave, onUndo, onRedo],
+    [enabled, onSave, onUndo, onRedo],
   );
 
   useEffect(() => {

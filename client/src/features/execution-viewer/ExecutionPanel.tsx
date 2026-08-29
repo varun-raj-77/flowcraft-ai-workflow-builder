@@ -9,6 +9,7 @@ import * as api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { ExecutionRun, StepLog, StepStatus, TransformDiagnostic } from '@/types';
 import { JsonViewer } from './JsonViewer';
+import { ExecutionProvenanceCard } from './ExecutionProvenanceCard';
 import {
   INSPECTOR_TABS,
   type InspectorTab,
@@ -193,16 +194,16 @@ function StepLogRow({ log }: { log: StepLog }) {
 function RunSummary({ run, now }: { run: ExecutionRun; now: number }) {
   const summary = getRunSummary(run, now);
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 px-4 py-3 text-[10px] sm:grid-cols-4">
-      <div><dt className="text-zinc-400">Status</dt><dd className="font-medium capitalize text-zinc-800 dark:text-zinc-200">{run.status}</dd></div>
-      <div><dt className="text-zinc-400">Trigger</dt><dd className="font-medium capitalize text-zinc-800 dark:text-zinc-200">{run.triggerType.replace('_', ' ')}</dd></div>
-      <div><dt className="text-zinc-400">Total duration</dt><dd className="font-medium text-zinc-800 dark:text-zinc-200">{formatDuration(summary.totalDurationMs)}</dd></div>
-      <div><dt className="text-zinc-400">Started</dt><dd className="font-medium text-zinc-800 dark:text-zinc-200">{formatDateTime(run.startedAt)}</dd></div>
-      <div><dt className="text-zinc-400">Completed</dt><dd className="font-medium text-zinc-800 dark:text-zinc-200">{formatDateTime(run.completedAt)}</dd></div>
-      <div><dt className="text-zinc-400">Successful</dt><dd className="font-medium text-emerald-700 dark:text-emerald-400">{summary.successfulSteps}</dd></div>
-      <div><dt className="text-zinc-400">Failed / skipped</dt><dd className="font-medium text-zinc-800 dark:text-zinc-200">{summary.failedSteps} / {summary.skippedSteps}</dd></div>
-      <div><dt className="text-zinc-400">Current node</dt><dd className="truncate font-medium text-zinc-800 dark:text-zinc-200">{summary.currentNode?.nodeLabel ?? '—'}</dd></div>
-    </dl>
+    <><dl className="grid grid-cols-2 gap-px border-b border-[var(--border-subtle)] bg-[var(--border-faint)] sm:grid-cols-4">
+      <div className="bg-[var(--surface-base)] px-4 py-3"><dt className="fc-kicker text-[var(--text-muted)]">Status</dt><dd className="mt-1 text-sm font-semibold capitalize text-[var(--text-primary)]">{run.status}</dd></div>
+      <div className="bg-[var(--surface-base)] px-4 py-3"><dt className="fc-kicker text-[var(--text-muted)]">Duration</dt><dd className="mt-1 font-mono text-sm font-semibold text-[var(--text-primary)]">{formatDuration(summary.totalDurationMs)}</dd></div>
+      <div className="bg-[var(--surface-base)] px-4 py-3"><dt className="fc-kicker text-[var(--text-muted)]">Completed</dt><dd className="mt-1 text-sm font-semibold text-emerald-300">{summary.successfulSteps}/{summary.totalSteps} steps</dd></div>
+      <div className="bg-[var(--surface-base)] px-4 py-3"><dt className="fc-kicker text-[var(--text-muted)]">Revision</dt><dd className="mt-1 font-mono text-sm font-semibold text-violet-300">{run.workflowRevision ? `v${run.workflowRevision}` : 'Legacy'}</dd></div>
+      <div className="bg-[var(--surface-base)] px-4 py-2"><dt className="text-[9px] text-[var(--text-muted)]">Trigger</dt><dd className="mt-0.5 text-[10px] font-medium capitalize text-[var(--text-secondary)]">{run.triggerType.replace('_', ' ')}</dd></div>
+      <div className="bg-[var(--surface-base)] px-4 py-2"><dt className="text-[9px] text-[var(--text-muted)]">Started</dt><dd className="mt-0.5 truncate text-[10px] font-medium text-[var(--text-secondary)]">{formatDateTime(run.startedAt)}</dd></div>
+      <div className="bg-[var(--surface-base)] px-4 py-2"><dt className="text-[9px] text-[var(--text-muted)]">Failed / skipped</dt><dd className="mt-0.5 text-[10px] font-medium text-[var(--text-secondary)]">{summary.failedSteps} / {summary.skippedSteps}</dd></div>
+      <div className="bg-[var(--surface-base)] px-4 py-2"><dt className="text-[9px] text-[var(--text-muted)]">Current node</dt><dd className="mt-0.5 truncate text-[10px] font-medium text-[var(--text-secondary)]">{summary.currentNode?.nodeLabel ?? '—'}</dd></div>
+    </dl><ExecutionProvenanceCard run={run} /></>
   );
 }
 
@@ -292,7 +293,7 @@ function TimelineView({ run, now }: { run: ExecutionRun | null; now: number }) {
 }
 
 function InspectorEmpty({ message }: { message: string }) {
-  return <div className="flex h-full min-h-40 items-center justify-center px-4 text-center text-xs text-zinc-400 dark:text-zinc-500">{message}</div>;
+  return <div className="flex h-full min-h-40 items-center justify-center px-4 text-center text-xs text-[var(--text-muted)]"><div><span className="mx-auto mb-2 block h-1.5 w-1.5 rounded-full bg-[var(--border-active)]" />{message}</div></div>;
 }
 
 function LiveView({ run, lastError, now }: { run: ExecutionRun | null; lastError: string | null; now: number }) {
@@ -301,9 +302,9 @@ function LiveView({ run, lastError, now }: { run: ExecutionRun | null; lastError
   return (
     <div>
       {run.status !== 'running' && (
-        <div className={cn('mx-4 mt-3 flex items-center justify-between rounded-xl border px-4 py-3 transition-all duration-300', run.status === 'completed' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/20' : 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/20')}>
-          <div><p className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">{run.status === 'completed' ? 'Workflow completed' : `Workflow ${run.status}`}</p><p className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-400">{summary.successfulSteps} successful / {summary.failedSteps} failed / {summary.skippedSteps} skipped</p></div>
-          <span className="text-[10px] font-medium tabular-nums text-zinc-600 dark:text-zinc-300">{formatDuration(summary.totalDurationMs)}</span>
+        <div className={cn('mx-4 mt-3 flex items-center justify-between rounded-xl border px-4 py-3 transition-all duration-300', run.status === 'completed' ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-red-500/30 bg-red-500/10')}>
+          <div><p className="text-xs font-semibold text-[var(--text-primary)]">{run.status === 'completed' ? 'Workflow completed' : `Workflow ${run.status}`}</p><p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{summary.successfulSteps} successful / {summary.failedSteps} failed / {summary.skippedSteps} skipped</p></div>
+          <span className="text-[10px] font-medium tabular-nums text-[var(--text-secondary)]">{formatDuration(summary.totalDurationMs)}</span>
         </div>
       )}
       <RunSummary run={run} now={now} />
@@ -502,31 +503,31 @@ export function ExecutionPanel() {
   };
 
   return (
-    <section ref={panelRef} className={cn('flex shrink-0 flex-col border-t border-zinc-200 bg-white transition-[height] duration-200 dark:border-zinc-800 dark:bg-zinc-950', isMaximized && 'min-h-0 flex-1')} style={!isMaximized && isOpen ? { height } : undefined} aria-label="Execution Inspector">
+    <section ref={panelRef} className={cn('flex shrink-0 flex-col border-t border-[var(--border-default)] bg-[var(--surface-shell)] transition-[height] duration-200', isMaximized && 'min-h-0 flex-1')} style={!isMaximized && isOpen ? { height } : undefined} aria-label="Execution Inspector">
       {isOpen && !isMaximized && <div role="slider" tabIndex={0} aria-label="Resize execution inspector" aria-valuemin={getBounds().min} aria-valuemax={getBounds().max} aria-valuenow={height} onPointerDown={beginResize} onPointerMove={resize} onPointerUp={finishResize} onPointerCancel={finishResize} onKeyDown={resizeByKeyboard} onDoubleClick={() => applyHeight(288, true)} className="group flex h-3 shrink-0 cursor-row-resize items-center justify-center touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"><span className="h-1 w-14 rounded-full bg-zinc-300 transition-colors group-hover:bg-violet-400 dark:bg-zinc-700 dark:group-hover:bg-violet-500" /></div>}
       <button
         type="button"
         onClick={() => setExecutionPanelOpen(!isOpen)}
-        className="flex w-full items-center justify-between bg-white px-4 py-2 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+        className="flex w-full items-center justify-between bg-[var(--surface-shell)] px-4 py-2.5 text-left transition-colors hover:bg-[var(--surface-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500"
         aria-expanded={isOpen}
       >
         <span className="flex items-center gap-2">
           <span className="text-[10px]" aria-hidden="true">{isOpen ? '▾' : '▴'}</span>
-          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Execution Inspector</span>
+          <span className="text-xs font-semibold text-[var(--text-secondary)]">Execution inspector</span>
           {currentRun && <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium', RUN_STATUS_BADGE[currentRun.status] || RUN_STATUS_BADGE.cancelled)}>{currentRun.status}</span>}
           {currentSummary && <span className="text-[10px] text-zinc-400">{currentSummary.completedSteps}/{currentSummary.totalSteps} steps</span>}
         </span>
       </button>
 
-      <div className="sticky top-0 z-20 flex justify-end gap-1 border-b border-zinc-100 bg-white/95 px-3 py-1 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
-        {isOpen && <button type="button" onClick={() => setExecutionPanelOpen(false)} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Collapse execution inspector">Collapse</button>}
-        {!isOpen && <button type="button" onClick={() => setExecutionPanelOpen(true)} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Restore execution inspector">Restore</button>}
-        {isOpen && (isMaximized ? <button type="button" onClick={restoreExecutionInspector} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Restore execution inspector">Restore</button> : <button type="button" onClick={maximizeExecutionInspector} className="rounded px-2 py-1 text-[10px] font-medium text-zinc-500 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-zinc-800" aria-label="Maximize execution inspector">Maximize</button>)}
+      <div className="sticky top-0 z-20 flex justify-end gap-1 border-b border-[var(--border-faint)] bg-[var(--surface-shell)] px-3 py-1 backdrop-blur">
+        {isOpen && <button type="button" onClick={() => setExecutionPanelOpen(false)} className="fc-focus rounded px-2 py-1 text-[10px] font-medium text-[var(--text-muted)] hover:bg-[var(--surface-hover)]" aria-label="Collapse execution inspector">Collapse</button>}
+        {!isOpen && <button type="button" onClick={() => setExecutionPanelOpen(true)} className="fc-focus rounded px-2 py-1 text-[10px] font-medium text-[var(--text-muted)] hover:bg-[var(--surface-hover)]" aria-label="Restore execution inspector">Restore</button>}
+        {isOpen && (isMaximized ? <button type="button" onClick={restoreExecutionInspector} className="fc-focus rounded px-2 py-1 text-[10px] font-medium text-[var(--text-muted)] hover:bg-[var(--surface-hover)]" aria-label="Restore execution inspector">Restore</button> : <button type="button" onClick={maximizeExecutionInspector} className="fc-focus rounded px-2 py-1 text-[10px] font-medium text-[var(--text-muted)] hover:bg-[var(--surface-hover)]" aria-label="Maximize execution inspector">Maximize</button>)}
       </div>
 
       {isOpen && (
-        <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-zinc-950">
-          <div className="sticky top-0 z-10 border-b border-zinc-100 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-950" role="tablist" aria-label="Execution Inspector views">
+        <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-shell)]">
+          <div className="sticky top-0 z-10 border-b border-[var(--border-subtle)] bg-[var(--surface-shell)] px-4" role="tablist" aria-label="Execution Inspector views">
             <div className="flex gap-4">
               {INSPECTOR_TABS.map((tab) => (
                 <button
@@ -540,7 +541,7 @@ export function ExecutionPanel() {
                   tabIndex={activeInspectorTab === tab ? 0 : -1}
                   onKeyDown={handleTabKeyDown}
                   onClick={() => setActiveInspectorTab(tab)}
-                  className={cn('border-b-2 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', activeInspectorTab === tab ? 'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100' : 'border-transparent text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300')}
+                  className={cn('border-b-2 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500', activeInspectorTab === tab ? 'border-violet-400 text-violet-200' : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]')}
                 >
                   {TAB_LABELS[tab]}
                 </button>

@@ -35,7 +35,7 @@ export function ConditionConfigForm({ nodeId, config }: ConditionConfigFormProps
         />
       </FieldWrapper>
 
-      <div className="rounded-md bg-zinc-50 px-3 py-2 dark:bg-zinc-800/50">
+      <div className="rounded-md border border-[var(--border-faint)] bg-[var(--surface-base)] px-3 py-2">
         <p className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
           Expression guide
         </p>

@@ -26,6 +26,13 @@ export const getExecution = asyncHandler(async (req: Request, res: Response) => 
   res.json({ data: run });
 });
 
+// ── GET /api/executions/run/:runId/provenance ──────────────
+
+export const getExecutionRevisionProvenance = asyncHandler(async (req: Request, res: Response) => {
+  const provenance = await engine.getExecutionRevisionProvenance(req.params.runId, req.userId!);
+  res.json({ data: provenance });
+});
+
 // ── GET /api/executions/workflow/:workflowId ────────────────
 
 export const listExecutions = asyncHandler(async (req: Request, res: Response) => {

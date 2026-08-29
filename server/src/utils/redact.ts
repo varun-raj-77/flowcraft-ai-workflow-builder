@@ -2,6 +2,7 @@ const SENSITIVE_KEY = /authorization|proxy-authorization|cookie|set-cookie|api[-
 
 export function redactText(value: string): string {
   return value
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:)[^@\s/]+@/gi, '$1[REDACTED]@')
     .replace(/\b(Bearer\s+)[^\s,;]+/gi, '$1[REDACTED]')
     .replace(/\b(api[-_ ]?key|token|password|secret)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]');
 }

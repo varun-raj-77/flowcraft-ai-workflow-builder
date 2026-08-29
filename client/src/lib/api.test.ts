@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, changePassword, getMe } from './api';
+import {
+  ApiError,
+  changePassword,
+  getMe,
+  getWorkflowAiPromptContext,
+  getWorkflowRevision,
+  listWorkflowRevisions,
+  regenerateWorkflow,
+  restoreWorkflowRevision,
+  updateWorkflow,
+} from './api';
 
 describe('shared API client', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -42,5 +52,85 @@ describe('shared API client', () => {
       credentials: 'include',
       body: JSON.stringify({ currentPassword: 'current-password', newPassword: 'new-password' }),
     }));
+  });
+
+  it('sends the expected revision with workflow updates for stale-save protection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ data: { _id: 'workflow-1', currentRevision: 4 } }),
+      { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await updateWorkflow('workflow-1', { expectedRevision: 3, name: 'Updated' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/workflows/workflow-1', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ expectedRevision: 3, name: 'Updated' }),
+    }));
+  });
+
+  it('uses revision-number cursors for history and exact revision retrieval', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { revisions: [], nextBeforeRevision: null } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { workflowId: 'workflow-1', revision: 7 } }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listWorkflowRevisions('workflow-1', { limit: 20, beforeRevision: 15 });
+    await getWorkflowRevision('workflow-1', 7);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/workflows/workflow-1/revisions?limit=20&beforeRevision=15',
+      expect.objectContaining({ credentials: 'include', cache: 'no-store' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/workflows/workflow-1/revisions/7',
+      expect.objectContaining({ credentials: 'include', cache: 'no-store' }),
+    );
+  });
+
+  it('sends expectedRevision when restoring a historical revision as new', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ data: { _id: 'workflow-1', currentRevision: 9 } }),
+      { status: 201 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await restoreWorkflowRevision('workflow-1', 3, { expectedRevision: 8 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/workflows/workflow-1/revisions/3/restore',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ expectedRevision: 8 }),
+      }),
+    );
+  });
+
+  it('loads backend prompt lineage and ties regeneration to the starting revision', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: { status: 'available', prompt: 'Prompt P1', promptRevision: 1, currentRevision: 1, relationship: 'direct' },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { _id: 'workflow-1', currentRevision: 2 } }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getWorkflowAiPromptContext('workflow-1');
+    await regenerateWorkflow('workflow-1', { prompt: 'Prompt P2', expectedRevision: 1 });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/workflows/workflow-1/ai-prompt-context',
+      expect.objectContaining({ credentials: 'include', cache: 'no-store' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/ai/workflows/workflow-1/regenerate',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ prompt: 'Prompt P2', expectedRevision: 1 }),
+      }),
+    );
   });
 });
