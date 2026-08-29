@@ -13,9 +13,9 @@ import { assertTransactionCapability, runInTransaction } from '../utils/mongoTra
 import {
   calculateDefinitionHash,
   normalizeAndValidateWorkflowGraph,
+  normalizeWorkflowGenerationMetadata,
   validateWorkflowGraph,
   type WorkflowDefinition,
-  type WorkflowGenerationMetadata,
 } from './workflowDefinition';
 import {
   compareWorkflowRevisionDefinitions,
@@ -110,16 +110,6 @@ function isDuplicateKeyError(error: unknown): boolean {
   return Boolean(error && typeof error === 'object' && 'code' in error && error.code === 11000);
 }
 
-function toHashableMetadata(
-  metadata: IWorkflowRevisionDocument['generationMetadata'] | IWorkflowDocument['generationMetadata'] | CreateWorkflowInput['generationMetadata'],
-): WorkflowGenerationMetadata | undefined {
-  if (!metadata) return undefined;
-  const value = typeof (metadata as { toObject?: () => unknown }).toObject === 'function'
-    ? (metadata as unknown as { toObject: () => Record<string, unknown> }).toObject()
-    : metadata;
-  return value as WorkflowGenerationMetadata;
-}
-
 function hydrateWorkflow(
   workflow: IWorkflowDocument,
   revision: IWorkflowRevisionDocument,
@@ -187,17 +177,23 @@ async function createRevision(
   },
   session: ClientSession,
 ): Promise<IWorkflowRevisionDocument> {
+  const generationMetadata = normalizeWorkflowGenerationMetadata(params.definition.generationMetadata);
+  const definition: WorkflowDefinition = {
+    nodes: params.definition.nodes,
+    edges: params.definition.edges,
+    ...(generationMetadata ? { generationMetadata } : {}),
+  };
   const [revision] = await WorkflowRevision.create([{
     workflowId: params.workflowId,
     userId: params.userId,
     revision: params.revision,
     parentRevisionId: params.parentRevisionId,
     source: params.source,
-    nodes: params.definition.nodes,
-    edges: params.definition.edges,
-    generationMetadata: params.definition.generationMetadata,
+    nodes: definition.nodes,
+    edges: definition.edges,
+    generationMetadata: definition.generationMetadata,
     restoredFromRevisionId: params.restoredFromRevisionId,
-    definitionHash: calculateDefinitionHash(params.definition),
+    definitionHash: calculateDefinitionHash(definition),
   }], { session });
   return revision;
 }
@@ -343,7 +339,7 @@ export async function createAiGeneratedWorkflowRevision(
 
       const currentRevision = await loadOwnedCurrentRevision(workflow, userId, session);
       const graph = normalizeAndValidateWorkflowGraph(generated.nodes, generated.edges);
-      const generationMetadata = toHashableMetadata(generated.generationMetadata);
+      const generationMetadata = normalizeWorkflowGenerationMetadata(generated.generationMetadata);
       if (!generationMetadata?.originalPrompt?.trim()) {
         throw new AppError(422, 'AI_GENERATION_METADATA_INVALID', 'AI generation did not produce trustworthy prompt metadata');
       }
@@ -708,7 +704,8 @@ export async function updateWorkflow(
         input.nodes ?? currentRevision.nodes,
         input.edges ?? currentRevision.edges,
       );
-      const candidateMetadata = input.generationMetadata ?? toHashableMetadata(currentRevision.generationMetadata);
+      const candidateMetadata = input.generationMetadata
+        ?? normalizeWorkflowGenerationMetadata(currentRevision.generationMetadata);
       const definition: WorkflowDefinition = {
         ...candidate,
         ...(candidateMetadata ? { generationMetadata: candidateMetadata } : {}),
@@ -833,7 +830,7 @@ export async function migrateWorkflowRevisions(
         return;
       }
       const generationMetadata = candidate.isGeneratedByAI
-        ? toHashableMetadata(candidate.generationMetadata)
+        ? normalizeWorkflowGenerationMetadata(candidate.generationMetadata)
         : undefined;
       calculateDefinitionHash({ ...graph, ...(generationMetadata ? { generationMetadata } : {}) });
       if (options.dryRun) {
@@ -859,7 +856,7 @@ export async function migrateWorkflowRevisions(
           throw new AppError(422, 'WORKFLOW_MIGRATION_INVALID_LEGACY', 'Legacy workflow graph is invalid');
         }
         const transactionMetadata = workflow.isGeneratedByAI
-          ? toHashableMetadata(workflow.generationMetadata)
+          ? normalizeWorkflowGenerationMetadata(workflow.generationMetadata)
           : undefined;
 
         const revision = await createRevision({

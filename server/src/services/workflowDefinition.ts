@@ -22,6 +22,57 @@ export interface WorkflowDefinition {
   generationMetadata?: WorkflowGenerationMetadata;
 }
 
+interface MongooseObjectConvertible {
+  toObject(options?: Record<string, unknown>): unknown;
+}
+
+function toLogicalObject(value: unknown): Record<string, unknown> {
+  const converted = value && typeof value === 'object'
+    && typeof (value as Partial<MongooseObjectConvertible>).toObject === 'function'
+    ? (value as MongooseObjectConvertible).toObject({
+        depopulate: true,
+        flattenMaps: true,
+        versionKey: false,
+      })
+    : value;
+
+  if (!converted || typeof converted !== 'object' || Array.isArray(converted)) {
+    throw new TypeError('Workflow generation metadata must be an object');
+  }
+  return converted as Record<string, unknown>;
+}
+
+/** Convert metadata into its persisted logical shape, excluding ODM document internals. */
+export function normalizeWorkflowGenerationMetadata(
+  metadata: unknown,
+): WorkflowGenerationMetadata | undefined {
+  if (metadata === undefined || metadata === null) return undefined;
+
+  const value = toLogicalObject(metadata);
+  const capabilityCoverage = value.capabilityCoverage === undefined
+    ? undefined
+    : toLogicalObject(value.capabilityCoverage);
+
+  return {
+    originalPrompt: value.originalPrompt as string,
+    generatedAt: value.generatedAt as string | Date,
+    ...(value.provider !== undefined ? { provider: value.provider as string } : {}),
+    ...(value.model !== undefined ? { model: value.model as string } : {}),
+    ...(capabilityCoverage
+      ? {
+          capabilityCoverage: {
+            requestedCapabilities: capabilityCoverage.requestedCapabilities as string[],
+            implementedCapabilities: capabilityCoverage.implementedCapabilities as string[],
+            missingCapabilities: capabilityCoverage.missingCapabilities as string[],
+            unsupportedCapabilities: capabilityCoverage.unsupportedCapabilities as string[],
+            coverage: capabilityCoverage.coverage as number,
+            isComplete: capabilityCoverage.isComplete as boolean,
+          },
+        }
+      : {}),
+  };
+}
+
 function canonicalizeValue(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(canonicalizeValue);
@@ -50,10 +101,11 @@ export function canonicalizeWorkflowDefinition(definition: WorkflowDefinition): 
   const edges = definition.edges
     .map((edge) => canonicalizeValue(edge) as Record<string, unknown>)
     .sort(stableDefinitionItemSort);
-  const generationMetadata = definition.generationMetadata
+  const normalizedMetadata = normalizeWorkflowGenerationMetadata(definition.generationMetadata);
+  const generationMetadata = normalizedMetadata
     ? {
-        ...definition.generationMetadata,
-        generatedAt: new Date(definition.generationMetadata.generatedAt).toISOString(),
+        ...normalizedMetadata,
+        generatedAt: new Date(normalizedMetadata.generatedAt).toISOString(),
       }
     : undefined;
 
