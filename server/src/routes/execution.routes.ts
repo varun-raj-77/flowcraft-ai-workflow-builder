@@ -14,6 +14,11 @@ router.post(
 
 // GET    /api/executions/run/:runId           → Get a specific execution result
 router.get(
+  '/run/:runId/provenance',
+  controller.getExecutionRevisionProvenance,
+);
+
+router.get(
   '/run/:runId',
   controller.getExecution,
 );

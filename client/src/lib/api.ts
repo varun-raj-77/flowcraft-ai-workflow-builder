@@ -1,4 +1,17 @@
-import type { Workflow, WorkflowSummary, ExecutionRun, GenerationMetadata } from '@/types';
+import type {
+  Workflow,
+  WorkflowSummary,
+  ExecutionRun,
+  GenerationMetadata,
+  RevisionHistoryResponse,
+  RestoreWorkflowRevisionRequest,
+  RestoreWorkflowRevisionResponse,
+  WorkflowRevisionDetail,
+  WorkflowRevisionComparison,
+  ExecutionRevisionProvenance,
+  WorkflowAiPromptContext,
+  RegenerateWorkflowRequest,
+} from '@/types';
 
 // All browser API traffic is same-origin. The App Router proxy forwards /api
 // server-side, so the session cookie remains first-party.
@@ -105,6 +118,7 @@ export async function createWorkflow(data: {
 export async function updateWorkflow(
   id: string,
   data: {
+    expectedRevision: number;
     name?: string;
     description?: string;
     nodes?: Workflow['nodes'];
@@ -125,6 +139,56 @@ export async function deleteWorkflow(id: string): Promise<void> {
   });
 }
 
+/** List a bounded page of immutable workflow revisions, newest first. */
+export async function listWorkflowRevisions(
+  workflowId: string,
+  options: { limit?: number; beforeRevision?: number } = {},
+): Promise<RevisionHistoryResponse> {
+  const query = new URLSearchParams({ limit: String(options.limit ?? 20) });
+  if (options.beforeRevision !== undefined) {
+    query.set('beforeRevision', String(options.beforeRevision));
+  }
+  return request<RevisionHistoryResponse>(`/workflows/${workflowId}/revisions?${query.toString()}`);
+}
+
+/** Get one exact immutable workflow revision, including its graph definition. */
+export async function getWorkflowRevision(
+  workflowId: string,
+  revision: number,
+): Promise<WorkflowRevisionDetail> {
+  return request<WorkflowRevisionDetail>(`/workflows/${workflowId}/revisions/${revision}`);
+}
+
+/** Copy a historical revision into a new immutable current revision. */
+export async function restoreWorkflowRevision(
+  workflowId: string,
+  revision: number,
+  data: RestoreWorkflowRevisionRequest,
+): Promise<RestoreWorkflowRevisionResponse> {
+  return request<RestoreWorkflowRevisionResponse>(
+    `/workflows/${workflowId}/revisions/${revision}/restore`,
+    { method: 'POST', body: JSON.stringify(data) },
+  );
+}
+
+/** Compare two exact immutable revisions in the requested direction. */
+export async function compareWorkflowRevisions(
+  workflowId: string,
+  fromRevision: number,
+  toRevision: number,
+): Promise<WorkflowRevisionComparison> {
+  return request<WorkflowRevisionComparison>(
+    `/workflows/${workflowId}/revisions/${fromRevision}/compare/${toRevision}`,
+  );
+}
+
+/** Resolve the authoritative AI prompt lineage for the current immutable definition. */
+export async function getWorkflowAiPromptContext(
+  workflowId: string,
+): Promise<WorkflowAiPromptContext> {
+  return request<WorkflowAiPromptContext>(`/workflows/${workflowId}/ai-prompt-context`);
+}
+
 // ── Execution endpoints ─────────────────────────────────────
 
 /** Trigger a workflow execution. Returns the completed run. */
@@ -137,6 +201,13 @@ export async function runWorkflow(workflowId: string): Promise<ExecutionRun> {
 /** Get a specific execution run by ID. */
 export async function getExecution(runId: string): Promise<ExecutionRun> {
   return request<ExecutionRun>(`/executions/run/${runId}`);
+}
+
+/** Resolve and integrity-check the exact immutable definition used by a run. */
+export async function getExecutionRevisionProvenance(
+  runId: string,
+): Promise<ExecutionRevisionProvenance> {
+  return request<ExecutionRevisionProvenance>(`/executions/run/${runId}/provenance`);
 }
 
 /** List execution history for a workflow. */
@@ -157,6 +228,17 @@ export async function generateWorkflow(prompt: string): Promise<{
   return request(`/ai/generate`, {
     method: 'POST',
     body: JSON.stringify({ prompt }),
+  });
+}
+
+/** Generate and atomically persist a new AI revision for an existing workflow. */
+export async function regenerateWorkflow(
+  workflowId: string,
+  data: RegenerateWorkflowRequest,
+): Promise<Workflow> {
+  return request<Workflow>(`/ai/workflows/${workflowId}/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify(data),
   });
 }
 

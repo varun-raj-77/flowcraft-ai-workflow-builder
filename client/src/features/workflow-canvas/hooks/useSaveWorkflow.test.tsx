@@ -25,6 +25,9 @@ const savedWorkflow: Workflow = {
   nodes: [],
   edges: [],
   isGeneratedByAI: false,
+  currentRevision: 1,
+  currentRevisionId: 'revision-1',
+  definitionHash: 'a'.repeat(64),
   createdAt: '2026-07-23T00:00:00.000Z',
   updatedAt: '2026-07-23T00:00:00.000Z',
 };
@@ -37,7 +40,14 @@ beforeEach(() => {
   useWorkflowStore.setState({
     nodes: [],
     edges: [],
-    meta: { _id: 'workflow-1', name: 'Workflow', isGeneratedByAI: false },
+    meta: {
+      _id: 'workflow-1',
+      name: 'Workflow',
+      isGeneratedByAI: false,
+      currentRevision: 1,
+      currentRevisionId: 'revision-1',
+      definitionHash: 'a'.repeat(64),
+    },
     isDirty: true,
   });
 });
@@ -57,6 +67,9 @@ describe('useSaveWorkflow', () => {
     });
 
     expect(mocks.updateWorkflow).toHaveBeenCalledTimes(1);
+    expect(mocks.updateWorkflow).toHaveBeenCalledWith('workflow-1', expect.objectContaining({
+      expectedRevision: 1,
+    }));
   });
 
   it('cleans up transient status timers on unmount', async () => {

@@ -3,6 +3,8 @@ import { useRouter } from 'next/navigation';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import * as api from '@/lib/api';
 import { withNormalizedGenerationMetadata } from '@/lib/workflowSavePayload';
+import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
+import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -44,6 +46,13 @@ export function useSaveWorkflow() {
 
   const save = useCallback(async (): Promise<void> => {
     if (isSavingRef.current) return;
+    if (useRevisionHistoryStore.getState().previewRevision || useRevisionComparisonStore.getState().comparison) {
+      throw new api.ApiError(
+        409,
+        'HISTORICAL_PREVIEW_READ_ONLY',
+        'Return to the current revision before saving.',
+      );
+    }
 
     isSavingRef.current = true;
     clearStatusTimer();
@@ -54,7 +63,11 @@ export function useSaveWorkflow() {
       const edges = toWorkflowEdges();
 
       if (meta?._id) {
+        if (!meta.currentRevision) {
+          throw new api.ApiError(409, 'WORKFLOW_MIGRATION_REQUIRED', 'This workflow must be migrated before it can be saved.');
+        }
         const saved = await api.updateWorkflow(meta._id, withNormalizedGenerationMetadata({
+          expectedRevision: meta.currentRevision,
           name: meta.name,
           description: meta.description,
           nodes,

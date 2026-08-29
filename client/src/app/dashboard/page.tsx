@@ -74,12 +74,13 @@ export default function DashboardPage() {
   return (
     <PageLayout>
       {/* Page header */}
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-8 flex flex-col gap-5 border-b border-[var(--border-faint)] pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">
+          <p className="fc-kicker mb-2 text-violet-400">Workspace</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
             Workflows
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1.5 text-sm text-[var(--text-muted)]">
             Build, run, and manage your automation workflows.
           </p>
         </div>
@@ -95,7 +96,7 @@ export default function DashboardPage() {
       </div>
 
       {error && (
-        <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+        <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           <span>{error}</span>
           <Button variant="ghost" size="sm" onClick={fetchWorkflows}>Retry</Button>
         </div>
@@ -105,11 +106,11 @@ export default function DashboardPage() {
       {isLoading ? (
         <div role="status" aria-label="Loading workflows" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((item) => (
-            <div key={item} className="h-48 animate-pulse rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-              <span className="block h-4 w-2/3 rounded bg-zinc-200 dark:bg-zinc-800" />
-              <span className="mt-3 block h-3 w-full rounded bg-zinc-100 dark:bg-zinc-800/70" />
-              <span className="mt-2 block h-3 w-4/5 rounded bg-zinc-100 dark:bg-zinc-800/70" />
-              <span className="mt-5 block h-9 rounded-lg bg-zinc-100 dark:bg-zinc-800/70" />
+            <div key={item} className="h-48 animate-pulse rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-base)] p-5">
+              <span className="block h-4 w-2/3 rounded bg-[var(--surface-hover)]" />
+              <span className="mt-3 block h-3 w-full rounded bg-[var(--surface-raised)]" />
+              <span className="mt-2 block h-3 w-4/5 rounded bg-[var(--surface-raised)]" />
+              <span className="mt-5 block h-9 rounded-lg bg-[var(--surface-raised)]" />
             </div>
           ))}
           <span className="sr-only">Loading workflows...</span>
@@ -121,7 +122,7 @@ export default function DashboardPage() {
           onCreate={handleCreate}
         />
       )}
-      <AIGeneratorModal />
+      <AIGeneratorModal mode="create" />
     </PageLayout>
   );
 }

@@ -20,6 +20,7 @@ export function GenerationPromptModal({ isOpen, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const generationInFlight = useRef(false);
   const dialogRef = useModalDialog({
     isOpen: isOpen && Boolean(meta?.isGeneratedByAI),
     onClose,
@@ -44,13 +45,14 @@ export function GenerationPromptModal({ isOpen, onClose }: Props) {
   };
   const regenerate = async () => {
     const originalPrompt = prompt.trim();
-    if (!originalPrompt || isGenerating) return;
+    if (!originalPrompt || generationInFlight.current) return;
+    generationInFlight.current = true;
     setIsGenerating(true); setError(null); setCandidate(null);
     try {
       const generated = await api.generateWorkflow(originalPrompt);
       setCandidate(generated);
     } catch (reason) { setError(api.getApiErrorMessage(reason, 'Generation failed. The current graph has not changed.')); }
-    finally { setIsGenerating(false); }
+    finally { generationInFlight.current = false; setIsGenerating(false); }
   };
   const confirmReplacement = () => { if (candidate?.generationMetadata.capabilityCoverage?.isComplete) { applyGeneratedWorkflow(candidate); setCandidate(null); } };
   const coverage = candidate?.generationMetadata.capabilityCoverage;

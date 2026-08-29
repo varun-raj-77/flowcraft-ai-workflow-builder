@@ -16,6 +16,18 @@ export type {
   WorkflowSummary,
   CapabilityCoverage,
   GenerationMetadata,
+  WorkflowRevisionSource,
+  WorkflowRevisionSummary,
+  WorkflowRevisionDetail,
+  RevisionHistoryResponse,
+  RestoreWorkflowRevisionRequest,
+  RestoreWorkflowRevisionResponse,
+  WorkflowAiPromptContext,
+  RegenerateWorkflowRequest,
+  WorkflowChangeCategory,
+  WorkflowFieldChange,
+  WorkflowComparisonRevision,
+  WorkflowRevisionComparison,
 } from './workflow';
 
 export type {
@@ -24,4 +36,5 @@ export type {
   StepLog,
   ExecutionRun,
   TransformDiagnostic,
+  ExecutionRevisionProvenance,
 } from './execution';

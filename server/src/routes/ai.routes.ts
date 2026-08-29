@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as controller from '../controllers/ai.controller';
 import { validateBody } from '../middleware/validate.middleware';
-import { generateWorkflowSchema } from '../validators/ai.validator';
+import { generateWorkflowSchema, regenerateWorkflowSchema } from '../validators/ai.validator';
 import { createRateLimiter } from '../middleware/rateLimit.middleware';
 
 const router = Router();
@@ -13,6 +13,14 @@ router.post(
   aiLimiter,
   validateBody(generateWorkflowSchema),
   controller.generateWorkflow,
+);
+
+// POST /api/ai/workflows/:workflowId/regenerate → Generate and atomically persist a new AI revision
+router.post(
+  '/workflows/:workflowId/regenerate',
+  aiLimiter,
+  validateBody(regenerateWorkflowSchema),
+  controller.regenerateWorkflow,
 );
 
 export default router;

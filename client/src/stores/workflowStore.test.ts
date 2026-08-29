@@ -3,7 +3,7 @@ import { useWorkflowStore } from './workflowStore';
 import type { FlowNodeData, Workflow } from '@/types';
 import type { Edge, Node } from '@xyflow/react';
 
-const workflow: Workflow = { _id: 'workflow_1', userId: 'user_1', name: 'Saved workflow', nodes: [{ id: 'start', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} }], edges: [], isGeneratedByAI: true, generationMetadata: { originalPrompt: 'Fetch data', generatedAt: '2026-01-01T00:00:00.000Z' }, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
+const workflow: Workflow = { _id: 'workflow_1', userId: 'user_1', name: 'Saved workflow', nodes: [{ id: 'start', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} }], edges: [], isGeneratedByAI: true, generationMetadata: { originalPrompt: 'Fetch data', generatedAt: '2026-01-01T00:00:00.000Z' }, currentRevision: 1, currentRevisionId: 'revision_1', definitionHash: 'a'.repeat(64), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
 
 describe('workflow dirty-state contract', () => {
   beforeEach(() => useWorkflowStore.getState().clearWorkflow());

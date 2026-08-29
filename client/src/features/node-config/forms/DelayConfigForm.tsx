@@ -41,8 +41,8 @@ export function DelayConfigForm({ nodeId, config }: DelayConfigFormProps) {
         />
       </FieldWrapper>
 
-      <div className="rounded-md bg-zinc-50 px-3 py-2 text-center dark:bg-zinc-800/50">
-        <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+      <div className="rounded-md border border-[var(--border-faint)] bg-[var(--surface-base)] px-3 py-2 text-center">
+        <p className="text-xs font-medium text-[var(--text-secondary)]">
           {displayTime}
         </p>
       </div>

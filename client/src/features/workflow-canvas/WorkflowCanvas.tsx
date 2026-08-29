@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -13,12 +13,15 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { useWorkflowStore } from '@/stores/workflowStore';
+import { toFlowEdge, toFlowNode, useWorkflowStore } from '@/stores/workflowStore';
+import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
+import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import { nodeTypes } from './nodes/nodeTypes';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { focusExecutionNode } from './executionNodeFocus';
+import { buildComparisonGraph } from '@/features/revision-comparison/comparisonGraph';
 
 /**
  * WorkflowCanvas — the centerpiece of the editor.
@@ -34,18 +37,36 @@ import { focusExecutionNode } from './executionNodeFocus';
 export function WorkflowCanvas() {
   const { setCenter, getViewport } = useReactFlow();
   // ── Store bindings ────────────────────────────────────────
-  const nodes = useWorkflowStore((s) => s.nodes);
-  const edges = useWorkflowStore((s) => s.edges);
+  const editableNodes = useWorkflowStore((s) => s.nodes);
+  const editableEdges = useWorkflowStore((s) => s.edges);
   const onNodesChange = useWorkflowStore((s) => s.onNodesChange);
   const onEdgesChange = useWorkflowStore((s) => s.onEdgesChange);
   const onConnect = useWorkflowStore((s) => s.onConnect);
+  const previewRevision = useRevisionHistoryStore((s) => s.previewRevision);
+  const previewNodes = useMemo(
+    () => previewRevision?.nodes.map(toFlowNode) ?? [],
+    [previewRevision],
+  );
+  const previewEdges = useMemo(
+    () => previewRevision?.edges.map(toFlowEdge) ?? [],
+    [previewRevision],
+  );
+  const comparison = useRevisionComparisonStore((s) => s.comparison);
+  const comparisonGraph = useMemo(
+    () => comparison ? buildComparisonGraph(comparison) : { nodes: [], edges: [] },
+    [comparison],
+  );
+  const isHistorical = previewRevision !== null;
+  const isComparing = comparison !== null;
+  const isReadOnly = isHistorical || isComparing;
+  const nodes = isComparing ? comparisonGraph.nodes : isHistorical ? previewNodes : editableNodes;
+  const edges = isComparing ? comparisonGraph.edges : isHistorical ? previewEdges : editableEdges;
 
   const selectNode = useUIStore((s) => s.selectNode);
   const undoToast = useUIStore((s) => s.undoToast);
   const showUndoToast = useUIStore((s) => s.showUndoToast);
   const clearUndoToast = useUIStore((s) => s.clearUndoToast);
   const selectedStepNodeId = useExecutionStore((s) => s.selectedStepNodeId);
-  const isRunning = useExecutionStore((s) => s.isRunning);
   const lastFocusedExecutionNodeId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -107,6 +128,7 @@ export function WorkflowCanvas() {
   // ── Keyboard shortcuts ────────────────────────────────────
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      if (isReadOnly) return;
       const target = event.target as HTMLElement;
       if (target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
       if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -140,56 +162,61 @@ export function WorkflowCanvas() {
         }
       }
     },
-    [isValidConnection, selectNode, showUndoToast],
+    [isReadOnly, isValidConnection, selectNode, showUndoToast],
   );
 
   return (
-    <div className="relative flex-1" onKeyDown={onKeyDown} tabIndex={0}>
-      {undoToast && <div role="status" className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white shadow-lg"><span>{undoToast}</span><button type="button" onClick={() => { useWorkflowStore.getState().undo(); clearUndoToast(); }} className="rounded px-1.5 py-0.5 font-semibold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">Undo</button><button type="button" aria-label="Dismiss undo notification" onClick={clearUndoToast}>×</button></div>}
+    <div className="relative flex-1 bg-[var(--surface-canvas)]" onKeyDown={onKeyDown} tabIndex={0} aria-label="Workflow canvas">
+      {!isReadOnly && undoToast && <div role="status" className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white shadow-lg"><span>{undoToast}</span><button type="button" onClick={() => { useWorkflowStore.getState().undo(); clearUndoToast(); }} className="rounded px-1.5 py-0.5 font-semibold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">Undo</button><button type="button" aria-label="Dismiss undo notification" onClick={clearUndoToast}>×</button></div>}
       {nodes.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <div className="rounded-2xl border border-dashed border-zinc-300 bg-white/90 px-6 py-5 text-center shadow-sm backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/90">
-            <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-sm font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">AI</span>
-            <p className="mt-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">Start with a workflow node</p>
-            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Drag a node here or generate a workflow with AI.</p>
+          <div className="fc-empty-state px-6 py-5 text-center shadow-xl backdrop-blur">
+            <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg border border-violet-500/25 bg-violet-500/10 text-xs font-semibold text-violet-300">AI</span>
+            <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">{isReadOnly ? 'This revision has no nodes' : 'Start with a workflow node'}</p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">{isReadOnly ? 'Return to the current revision to edit the workflow.' : 'Drag a node here or generate a workflow with AI.'}</p>
           </div>
         </div>
       )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
+        onNodesChange={isReadOnly ? undefined : onNodesChange}
+        onEdgesChange={isReadOnly ? undefined : onEdgesChange}
+        onConnect={isReadOnly ? undefined : onConnect}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
+        onDragOver={isReadOnly ? undefined : onDragOver}
+        onDrop={isReadOnly ? undefined : onDrop}
         isValidConnection={isValidConnection}
+        nodesDraggable={!isReadOnly}
+        nodesConnectable={!isReadOnly}
+        deleteKeyCode={isReadOnly ? null : ['Backspace', 'Delete']}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         defaultEdgeOptions={{
           type: 'smoothstep',
-          animated: isRunning,
+          animated: false,
         }}
         proOptions={{ hideAttribution: true }}
-        className="bg-zinc-50 dark:bg-zinc-950"
+        className="bg-[var(--surface-canvas)]"
       >
         <Background
           variant={BackgroundVariant.Dots}
           gap={20}
           size={1}
-          color="rgb(161 161 170 / 0.3)"
+          color="rgb(113 113 122 / 0.24)"
         />
         <Controls
           showInteractive={false}
-          className="!rounded-lg !border-zinc-200 !bg-white !shadow-sm dark:!border-zinc-700 dark:!bg-zinc-900 [&>button]:!border-zinc-200 [&>button]:!bg-white dark:[&>button]:!border-zinc-700 dark:[&>button]:!bg-zinc-900 dark:[&>button]:!fill-zinc-400"
+          className="!overflow-hidden !rounded-lg !border-[var(--border-subtle)] !bg-[var(--surface-raised)] !shadow-xl [&>button]:!border-[var(--border-faint)] [&>button]:!bg-[var(--surface-raised)] [&>button]:!fill-[var(--text-muted)] hover:[&>button]:!bg-[var(--surface-hover)]"
         />
         <MiniMap
           nodeStrokeWidth={3}
-          className="!rounded-lg !border-zinc-200 !bg-white !shadow-sm dark:!border-zinc-700 dark:!bg-zinc-900"
-          maskColor="rgb(0 0 0 / 0.08)"
+          nodeColor="var(--border-default)"
+          nodeStrokeColor="var(--text-muted)"
+          className="!rounded-lg !border-[var(--border-subtle)] !bg-[var(--surface-raised)] !shadow-xl"
+          maskColor="rgb(8 8 11 / 0.72)"
         />
       </ReactFlow>
     </div>

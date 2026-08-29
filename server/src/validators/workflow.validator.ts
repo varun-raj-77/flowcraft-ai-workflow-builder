@@ -74,6 +74,11 @@ export const edgeSchema = z.object({
   label: z.string().optional(),
 });
 
+export const workflowGraphSchema = z.object({
+  nodes: z.array(nodeSchema).default([]),
+  edges: z.array(edgeSchema).default([]),
+});
+
 // ── Workflow (create request body) ──────────────────────────
 
 export const createWorkflowSchema = z.object({
@@ -102,6 +107,7 @@ export const createWorkflowSchema = z.object({
 // All fields optional — partial updates allowed
 
 export const updateWorkflowSchema = z.object({
+  expectedRevision: z.number().int().min(1),
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
   nodes: z.array(nodeSchema).optional(),
@@ -122,10 +128,32 @@ export const updateWorkflowSchema = z.object({
   }).optional(),
 });
 
+export const workflowRevisionParamsSchema = z.object({
+  id: z.string().min(1),
+  revision: z.coerce.number().int().min(1),
+});
+
+export const workflowRevisionComparisonParamsSchema = z.object({
+  id: z.string().min(1),
+  fromRevision: z.coerce.number().int().min(1),
+  toRevision: z.coerce.number().int().min(1),
+});
+
+export const workflowRevisionHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  beforeRevision: z.coerce.number().int().min(1).optional(),
+});
+
+export const restoreWorkflowRevisionSchema = z.object({
+  expectedRevision: z.number().int().min(1),
+});
+
 // ── Type exports ────────────────────────────────────────────
 
 export type CreateWorkflowInput = z.infer<typeof createWorkflowSchema>;
 export type UpdateWorkflowInput = z.infer<typeof updateWorkflowSchema>;
+export type WorkflowRevisionHistoryQuery = z.infer<typeof workflowRevisionHistoryQuerySchema>;
+export type RestoreWorkflowRevisionInput = z.infer<typeof restoreWorkflowRevisionSchema>;
 
 // ── Cross-field validation helpers ──────────────────────────
 

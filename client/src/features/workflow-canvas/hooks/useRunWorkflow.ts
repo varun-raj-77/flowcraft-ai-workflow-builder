@@ -6,6 +6,8 @@ import { useSaveWorkflow } from './useSaveWorkflow';
 import { useExecutionSocket } from '@/features/execution-viewer/hooks/useExecutionSocket';
 import * as api from '@/lib/api';
 import { validateWorkflowPreflight } from '../workflowPreflight';
+import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
+import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 
 export function useRunWorkflow() {
   const meta = useWorkflowStore((s) => s.meta);
@@ -57,6 +59,10 @@ export function useRunWorkflow() {
 
   const run = useCallback(async () => {
     if (isRunning) return;
+    if (useRevisionHistoryStore.getState().previewRevision || useRevisionComparisonStore.getState().comparison) {
+      setLastError('Return to the current revision before running this workflow.');
+      return;
+    }
 
     try {
       const preflight = validateWorkflowPreflight(useWorkflowStore.getState().nodes, useWorkflowStore.getState().edges);

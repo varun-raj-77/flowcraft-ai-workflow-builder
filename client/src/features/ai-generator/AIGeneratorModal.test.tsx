@@ -68,4 +68,31 @@ describe('AIGeneratorModal validation', () => {
     expect(mocks.applyGeneratedWorkflow).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
   });
+
+  it('submits only one generation request for rapid duplicate clicks', async () => {
+    let resolve!: (value: unknown) => void;
+    mocks.generateWorkflow.mockReturnValue(new Promise((next) => { resolve = next; }));
+    render(<AIGeneratorModal />);
+    fireEvent.change(screen.getByPlaceholderText(/Fetch data from an API/i), { target: { value: 'Generate once' } });
+    const button = screen.getByRole('button', { name: 'Generate Workflow' });
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(mocks.generateWorkflow).toHaveBeenCalledTimes(1);
+    resolve({
+      name: 'Generated once',
+      nodes: [],
+      edges: [],
+      generationMetadata: {
+        originalPrompt: 'Generate once',
+        generatedAt: '2026-08-29T00:00:00.000Z',
+        capabilityCoverage: {
+          requestedCapabilities: [], implementedCapabilities: [], missingCapabilities: [],
+          unsupportedCapabilities: [], coverage: 1, isComplete: true,
+        },
+      },
+    });
+    await waitFor(() => expect(mocks.applyGeneratedWorkflow).toHaveBeenCalledTimes(1));
+  });
 });

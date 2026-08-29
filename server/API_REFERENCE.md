@@ -1,261 +1,324 @@
 # FlowCraft API — Endpoint Reference
 
-Base URL: `http://localhost:3001/api`
+Default local base URL: `http://localhost:3001/api`
 
-All responses follow the shape:
-- Success: `{ data: ... }`
-- Error: `{ error: { code: string, message: string, details?: [...] } }`
+Except for `GET /health`, registration, and login, routes require the JWT stored in the secure `token` cookie. Browser requests must include credentials. Every unsafe request (`POST`, `PUT`, `PATCH`, or `DELETE`) also requires an `Origin` present in `TRUSTED_ORIGINS`; otherwise the API returns `403 UNTRUSTED_ORIGIN`.
 
----
+Success responses use `{ "data": ... }`, except `GET /health` and successful `DELETE` responses. Errors use:
 
-## POST /api/workflows
+```json
+{
+  "error": {
+    "code": "STABLE_ERROR_CODE",
+    "message": "Human-readable message",
+    "details": [{ "field": "fieldName", "message": "Validation message" }]
+  }
+}
+```
 
-Creates a new workflow.
+`details` is present only for request validation errors. API responses are private and non-cacheable.
 
-### Request
+## Route index
+
+| Method | Route | Status | Purpose |
+|---|---|---:|---|
+| `GET` | `/health` | 200 | Service health; no authentication |
+| `POST` | `/auth/register` | 201 | Register and set the session cookie |
+| `POST` | `/auth/login` | 200 | Authenticate and set the session cookie |
+| `POST` | `/auth/logout` | 200 | Clear the session cookie |
+| `GET` | `/auth/me` | 200 | Read the authenticated user |
+| `POST` | `/auth/socket-ticket` | 200 | Mint a one-time, 60-second Socket.IO ticket |
+| `POST` | `/auth/change-password` | 200 | Change the authenticated user's password |
+| `POST` | `/workflows` | 201 | Create a root and immutable revision 1 |
+| `GET` | `/workflows` | 200 | List owned workflow summaries |
+| `GET` | `/workflows/:id` | 200 | Hydrate the owned current revision |
+| `GET` | `/workflows/:id/revisions` | 200 | List bounded immutable history |
+| `GET` | `/workflows/:id/revisions/:revision` | 200 | Read one exact immutable revision |
+| `GET` | `/workflows/:id/revisions/:fromRevision/compare/:toRevision` | 200 | Compare two exact revisions directionally |
+| `GET` | `/workflows/:id/ai-prompt-context` | 200 | Resolve prompt context from definition lineage |
+| `POST` | `/workflows/:id/revisions/:revision/restore` | 201 | Restore as a new semantic revision |
+| `PUT` | `/workflows/:id` | 200 | Save with optimistic concurrency |
+| `DELETE` | `/workflows/:id` | 204 | Delete root, revisions, and execution runs |
+| `POST` | `/ai/generate` | 200 | Generate and validate an unpersisted candidate |
+| `POST` | `/ai/workflows/:workflowId/regenerate` | 201 | Generate and atomically persist an AI revision |
+| `POST` | `/executions/:workflowId/run` | 201 | Pin the current revision and start execution |
+| `GET` | `/executions/run/:runId` | 200 | Read one owned execution |
+| `GET` | `/executions/run/:runId/provenance` | 200 | Resolve exact definition provenance |
+| `GET` | `/executions/workflow/:workflowId` | 200 | List the 20 newest owned runs |
+
+Route ordering deliberately places revision, lineage, and provenance routes before generic `/:id` and `/run/:runId` handlers.
+
+## Authentication
+
+### POST /api/auth/register
+
+```json
+{
+  "email": "person@example.com",
+  "password": "at-least-6-characters",
+  "displayName": "Person"
+}
+```
+
+`displayName` is 2–50 characters. The response is the created user and sets the session cookie.
+
+### POST /api/auth/login
+
+```json
+{ "email": "person@example.com", "password": "password" }
+```
+
+### POST /api/auth/logout
+
+No body. Returns `{ "data": { "message": "Logged out" } }` and clears the cookie.
+
+### GET /api/auth/me
+
+Returns the authenticated user plus `isDemoAccount`.
+
+### POST /api/auth/socket-ticket
+
+No body. Returns `{ "data": { "ticket": "one-time-ticket" } }`. The ticket, rather than the JWT cookie, authenticates the direct Socket.IO handshake and can be consumed once within 60 seconds.
+
+### POST /api/auth/change-password
+
+```json
+{
+  "currentPassword": "old-password",
+  "newPassword": "new-password"
+}
+```
+
+The body is strict; extra fields are rejected. Demo-account password changes are forbidden.
+
+## Workflow definition contract
+
+Every manual and AI graph uses the same node, edge, and DAG validation. Supported node types are `start`, `api_call`, `condition`, `transform`, `delay`, `output`, and `end`.
 
 ```json
 {
   "name": "Fetch and Process User Data",
-  "description": "Calls user API, validates response, transforms payload",
+  "description": "Calls an API and publishes a result",
   "nodes": [
     {
-      "id": "node_0",
+      "id": "start",
       "type": "start",
       "label": "Start",
-      "position": { "x": -100, "y": 200 },
+      "position": { "x": 0, "y": 0 },
       "config": {}
     },
     {
-      "id": "node_1",
+      "id": "fetch",
       "type": "api_call",
       "label": "Fetch Users",
-      "position": { "x": 150, "y": 200 },
+      "position": { "x": 240, "y": 0 },
       "config": {
         "url": "https://jsonplaceholder.typicode.com/users",
         "method": "GET",
         "headers": { "Accept": "application/json" },
         "timeout": 5000
       }
-    },
-    {
-      "id": "node_2",
-      "type": "condition",
-      "label": "Check Status",
-      "position": { "x": 430, "y": 200 },
-      "config": {
-        "expression": "{{node_1.status}} === 200"
-      }
-    },
-    {
-      "id": "node_3",
-      "type": "output",
-      "label": "Log Result",
-      "position": { "x": 720, "y": 200 },
-      "config": {
-        "logLevel": "info",
-        "message": "Got {{node_1.data.length}} users"
-      }
-    },
-    {
-      "id": "node_4",
-      "type": "end",
-      "label": "End",
-      "position": { "x": 1000, "y": 200 },
-      "config": {}
     }
   ],
   "edges": [
-    { "id": "edge_0", "source": "node_0", "target": "node_1" },
-    { "id": "edge_1", "source": "node_1", "target": "node_2" },
-    { "id": "edge_2", "source": "node_2", "target": "node_3", "sourceHandle": "condition_true", "conditionBranch": "true", "label": "Yes" },
-    { "id": "edge_3", "source": "node_3", "target": "node_4" }
+    { "id": "start-fetch", "source": "start", "target": "fetch" }
   ],
   "isGeneratedByAI": false
 }
 ```
 
-### Response (201)
+Node IDs must be unique; edges must reference existing nodes; the graph must be acyclic; node config must match its type; and conditional branch handles must be valid. Empty node and edge arrays are accepted for a newly created draft.
+
+An AI definition can include:
+
+```json
+{
+  "isGeneratedByAI": true,
+  "generationMetadata": {
+    "originalPrompt": "Fetch active users and publish a summary",
+    "generatedAt": "2026-08-29T12:00:00.000Z",
+    "provider": "anthropic",
+    "model": "configured-model",
+    "capabilityCoverage": {
+      "requestedCapabilities": ["api_call", "output"],
+      "implementedCapabilities": ["api_call", "output"],
+      "missingCapabilities": [],
+      "unsupportedCapabilities": [],
+      "coverage": 1,
+      "isComplete": true
+    }
+  }
+}
+```
+
+## Workflow writes
+
+### POST /api/workflows
+
+Creates the workflow root and immutable revision 1 in one MongoDB transaction. The response is a hydrated workflow with `currentRevision`, `currentRevisionId`, `definitionHash`, `nodes`, and `edges`.
+
+### PUT /api/workflows/:id
+
+`expectedRevision` is required. `name`, `description`, `nodes`, `edges`, and `generationMetadata` are optional.
+
+```json
+{
+  "expectedRevision": 3,
+  "name": "Updated workflow",
+  "nodes": [],
+  "edges": []
+}
+```
+
+A changed definition creates the next immutable `manual` revision and advances the root pointer atomically. An identical definition reuses the current revision. A stale expected revision returns `409 WORKFLOW_REVISION_CONFLICT`.
+
+### POST /api/workflows/:id/revisions/:revision/restore
+
+```json
+{ "expectedRevision": 3 }
+```
+
+Restoring v1 while v3 is current creates v4 with `source: "restore"`, v3 as `parentRevisionId`, and v1 as `restoredFromRevisionId`. The current pointer never moves backward. Restoring the current revision returns `400 CANNOT_RESTORE_CURRENT_REVISION`.
+
+### DELETE /api/workflows/:id
+
+Deletes the owned workflow root, its immutable revisions, and its execution runs in one transaction. Success has no body.
+
+## Workflow reads and history
+
+### GET /api/workflows
+
+Returns owned workflow summaries newest-updated first and omits graph bodies. A successful account with no workflows receives an empty array; API failures are not replaced by sample data.
+
+### GET /api/workflows/:id
+
+Returns root metadata hydrated with the exact owned current revision. A legacy root without revision pointers returns `409 WORKFLOW_MIGRATION_REQUIRED`; a broken pointer returns `409 WORKFLOW_REVISION_MISSING`; an integrity failure returns `422 WORKFLOW_REVISION_INTEGRITY_ERROR`.
+
+### GET /api/workflows/:id/revisions
+
+Query parameters:
+
+- `limit`: 1–50, default 20.
+- `beforeRevision`: optional exclusive revision-number cursor.
+
+The response is newest-first and omits graph bodies:
 
 ```json
 {
   "data": {
-    "_id": "665f1a2b3c4d5e6f7a8b9c0d",
-    "userId": "user_001",
-    "name": "Fetch and Process User Data",
-    "description": "Calls user API, validates response, transforms payload",
-    "nodes": [ ... ],
-    "edges": [ ... ],
-    "isGeneratedByAI": false,
-    "createdAt": "2025-06-01T10:00:00.000Z",
-    "updatedAt": "2025-06-01T10:00:00.000Z"
+    "revisions": [
+      {
+        "id": "revision-id",
+        "revision": 4,
+        "parentRevisionId": "revision-3-id",
+        "source": "restore",
+        "definitionHash": "64-character-sha256",
+        "restoredFromRevisionId": "revision-1-id",
+        "restoredFromRevision": 1,
+        "createdAt": "2026-08-29T12:00:00.000Z",
+        "nodeCount": 5,
+        "edgeCount": 4
+      }
+    ],
+    "nextBeforeRevision": null
   }
 }
 ```
 
-### Minimal request (empty workflow)
+### GET /api/workflows/:id/revisions/:revision
+
+Returns `id`, `workflowId`, revision and lineage fields, canonical hash, nodes, edges, optional generation metadata, and creation time. The stored hash is verified before the body is returned.
+
+### GET /api/workflows/:id/revisions/:fromRevision/compare/:toRevision
+
+Returns a directional semantic diff with `from`, `to`, `hasChanges`, bounded summary counts, added/removed/modified nodes and edges, field-level categories (`runtime`, `presentation`, `layout`), and a read-only graph for the `to` side. Sensitive values are redacted. Both revisions must belong to the workflow and authenticated user and must pass integrity verification.
+
+### GET /api/workflows/:id/ai-prompt-context
+
+Resolves prompt context from the current definition's immutable ancestry:
 
 ```json
 {
-  "name": "My New Workflow"
-}
-```
-
-Response: Workflow with empty nodes/edges arrays.
-
----
-
-## GET /api/workflows
-
-Lists all workflows for the authenticated user.
-Excludes nodes/edges for performance — use GET /:id to load the full graph.
-
-### Response (200)
-
-```json
-{
-  "data": [
-    {
-      "_id": "665f1a2b3c4d5e6f7a8b9c0d",
-      "userId": "user_001",
-      "name": "Fetch and Process User Data",
-      "description": "Calls user API, validates response, transforms payload",
-      "isGeneratedByAI": false,
-      "createdAt": "2025-06-01T10:00:00.000Z",
-      "updatedAt": "2025-06-03T14:30:00.000Z"
-    },
-    {
-      "_id": "665f2b3c4d5e6f7a8b9c0e1f",
-      "userId": "user_001",
-      "name": "Delayed Notification Pipeline",
-      "description": "Fetch data, wait, then send notification",
-      "isGeneratedByAI": true,
-      "createdAt": "2025-06-02T08:00:00.000Z",
-      "updatedAt": "2025-06-02T08:00:00.000Z"
-    }
-  ]
-}
-```
-
----
-
-## GET /api/workflows/:id
-
-Returns a single workflow with full nodes and edges.
-
-### Response (200)
-
-Full workflow document (same shape as POST response).
-
-### Error (404)
-
-```json
-{
-  "error": {
-    "code": "WORKFLOW_NOT_FOUND",
-    "message": "Workflow not found"
+  "data": {
+    "status": "available",
+    "prompt": "Saved generation prompt",
+    "promptRevision": 2,
+    "currentRevision": 4,
+    "relationship": "restored",
+    "provider": "anthropic",
+    "model": "configured-model"
   }
 }
 ```
 
----
+`status` can be `available`, `none`, or `unavailable`. Available relationships are `direct`, `inherited`, and `restored`. Missing links, cycles, missing prompt evidence, and traversal beyond 100 revisions return `unavailable` rather than guessing.
 
-## PUT /api/workflows/:id
+## AI generation
 
-Updates a workflow. All fields are optional — only include what changed.
+### POST /api/ai/generate
 
-### Full graph update (typical save from the editor)
+```json
+{ "prompt": "Fetch active users and publish a summary" }
+```
+
+The prompt is 1–2000 characters. This endpoint returns a validated candidate but does not persist it. The candidate still must pass the workflow write contract when saved.
+
+### POST /api/ai/workflows/:workflowId/regenerate
 
 ```json
 {
-  "name": "Updated Workflow Name",
-  "nodes": [ ... ],
-  "edges": [ ... ]
+  "prompt": "Fetch active users and publish a summary",
+  "expectedRevision": 3
 }
 ```
 
-### Name-only update
+Ownership and the starting revision are checked before the provider call and checked again inside the write transaction. A complete, valid provider result creates a new `ai_generated` revision and returns the hydrated workflow. Incomplete capability coverage returns `422 AI_CAPABILITY_INCOMPLETE`; untrustworthy prompt metadata returns `422 AI_GENERATION_METADATA_INVALID`; a concurrent writer returns `409 WORKFLOW_REVISION_CONFLICT`.
 
-```json
-{
-  "name": "Renamed Workflow"
-}
-```
+## Executions and provenance
 
-### Response (200)
+### POST /api/executions/:workflowId/run
 
-Updated workflow document.
+No body. In one transaction, the server resolves and validates the owned current revision, verifies its canonical hash, guards the root pointer, and creates an execution record pinned by `workflowRevisionId`, `workflowRevision`, and `definitionHash`. It returns the pending run with status 201, then processes the pinned definition asynchronously and emits authorized Socket.IO events.
 
----
+Empty graphs return `400 EMPTY_WORKFLOW`. Legacy roots and broken pointers fail closed; the engine never falls back to root graph fields.
 
-## DELETE /api/workflows/:id
+### GET /api/executions/run/:runId
 
-Deletes a workflow.
+Returns one owned execution record, including status, timing, ordered step logs, and any pinned revision fields.
 
-### Response (204)
+### GET /api/executions/workflow/:workflowId
 
-No body.
+Returns the 20 newest runs matching both the workflow and authenticated user.
 
-### Error (404)
+### GET /api/executions/run/:runId/provenance
 
-```json
-{
-  "error": {
-    "code": "WORKFLOW_NOT_FOUND",
-    "message": "Workflow not found"
-  }
-}
-```
+Returns one of four evidence states:
 
----
+- `pinned`: the exact revision exists and its hash verifies; `canView` is true and `canCompare` is true when it is not current.
+- `legacy`: the pre-revision run truthfully has no exact definition evidence.
+- `unavailable`: the workflow or pinned revision no longer exists.
+- `integrity_error`: provenance fields are partial, hashes disagree, or revision integrity fails.
 
-## Validation Errors
+The response also includes the run and workflow IDs, available revision/hash fields, `currentRevision`, `isCurrent`, `canView`, `canCompare`, and an explanatory message when applicable. It never substitutes the current graph for missing historical evidence.
 
-All validation errors return 400 with this shape:
+## Common errors
 
-### Missing required field
+| Status | Code | Meaning |
+|---:|---|---|
+| 400 | `VALIDATION_ERROR` | Request body, path, or query validation failed |
+| 400 | `INVALID_JSON` | Malformed JSON body |
+| 400 | `INVALID_ID` | Invalid MongoDB resource ID |
+| 400 | `CYCLE_DETECTED` / `INVALID_EDGE_REFERENCES` / `INVALID_NODE_CONFIG` | Invalid graph |
+| 401 | `MISSING_TOKEN` / `TOKEN_EXPIRED` / `INVALID_TOKEN` | Authentication failed |
+| 403 | `UNTRUSTED_ORIGIN` | Unsafe request origin is absent or untrusted |
+| 404 | `WORKFLOW_NOT_FOUND` | Workflow is missing or not owned |
+| 404 | `WORKFLOW_REVISION_NOT_FOUND` | Exact revision is missing from the owned workflow |
+| 404 | `EXECUTION_NOT_FOUND` | Execution is missing or not owned |
+| 409 | `WORKFLOW_REVISION_CONFLICT` | Optimistic concurrency check failed |
+| 409 | `WORKFLOW_MIGRATION_REQUIRED` | Legacy root has not been migrated |
+| 409 | `WORKFLOW_REVISION_MISSING` | Root pointer cannot resolve its exact revision |
+| 422 | `WORKFLOW_REVISION_INTEGRITY_ERROR` | Canonical evidence does not match stored revision |
+| 429 | `RATE_LIMITED` | Route-specific request limit exceeded |
+| 500 | `INTERNAL_ERROR` | Unexpected error; internal details are not exposed |
 
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Request body validation failed",
-    "details": [
-      { "field": "name", "message": "Required" }
-    ]
-  }
-}
-```
-
-### Cycle detected
-
-```json
-{
-  "error": {
-    "code": "CYCLE_DETECTED",
-    "message": "Workflow contains a cycle. Edges must form a DAG."
-  }
-}
-```
-
-### Invalid node config for type
-
-```json
-{
-  "error": {
-    "code": "INVALID_NODE_CONFIG",
-    "message": "Invalid config for api_call: url: Required"
-  }
-}
-```
-
-### Edge references nonexistent node
-
-```json
-{
-  "error": {
-    "code": "INVALID_EDGE_REFERENCES",
-    "message": "Edge references nonexistent source node: node_99"
-  }
-}
-```
+Authorization is deliberately non-enumerating: cross-user workflow, revision, AI-context, run, and provenance requests resolve as not found. Same-user revision IDs are always constrained by workflow ID, preventing cross-workflow revision mixing.

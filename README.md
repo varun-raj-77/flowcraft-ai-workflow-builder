@@ -20,7 +20,7 @@
 ![FlowCraft visual workflow editor and execution inspector](docs/images/flowcraft-dashboard.png)
 
 <p align="center">
-  <sub><strong>Figure 1.</strong> A completed multi-endpoint workflow with parallel API calls, data transformation, live execution status, and node-level configuration.</sub>
+  <sub><strong>Figure 1.</strong> A completed multi-endpoint workflow with API calls, data transformation, live execution status, and node-level configuration.</sub>
 </p>
 
 ## Overview
@@ -34,7 +34,8 @@ The project focuses on engineering problems that go beyond a traditional CRUD ap
 - real-time execution streaming
 - AI output validation
 - user-scoped authentication and persistence
-- replay, payload inspection, and runtime diagnostics
+- immutable revision history, semantic comparison, and safe restore
+- revision-pinned execution provenance and runtime diagnostics
 - production deployment across independent frontend and backend services
 
 Manual and AI-generated workflows use the same graph model, validation rules, persistence layer, canvas, and execution engine.
@@ -74,6 +75,20 @@ Generated workflows are not trusted automatically. They pass through:
 - prompt-fidelity verification
 - atomic replacement only after validation succeeds
 
+For an existing workflow, AI regeneration is an optimistic-concurrency write: the provider result is persisted only if the workflow is still on the revision from which generation began. Each successful regeneration creates a new immutable `ai_generated` revision containing its exact saved prompt, provider, model, and capability coverage.
+
+### Immutable history and definition provenance
+
+Every workflow definition is stored as an immutable, canonically hashed revision. The workflow root owns metadata and points to the current revision; it is not a second editable graph copy.
+
+- Manual saves, AI regenerations, and restores create semantic revision events.
+- Identical saves reuse the current revision instead of manufacturing history.
+- `expectedRevision` prevents stale browser tabs from silently overwriting newer work.
+- History is paginated newest-first and historical previews are read-only.
+- Restore copies a historical definition into a new current revision; it never moves the current pointer backward.
+- Directional comparison classifies runtime, presentation, and layout changes and redacts sensitive values.
+- AI prompt context follows definition lineage, including inherited manual edits and restored branches, with cycle and depth guards.
+
 ### Real-time workflow execution
 
 ![FlowCraft execution timeline](docs/images/flowcraft-execution.png)
@@ -111,7 +126,7 @@ The inspector provides:
 - variables and payload inspection
 - expandable JSON branches
 - search across keys and values
-- execution replay
+- historical-run inspection
 - node focusing
 - human-readable failure guidance
 - technical error details for debugging
@@ -168,7 +183,7 @@ The demo account follows the standard authentication flow rather than bypassing 
 - Socket.IO execution events
 - Running, Success, Failed, and Skipped states
 - Execution timeline
-- Replay and node focus
+- Historical-run selection and node focus
 - Variables and payload inspection
 - Execution insights
 - Searchable and expandable JSON
@@ -193,7 +208,7 @@ The demo account follows the standard authentication flow rather than bypassing 
   <sub><strong>Figure 6.</strong> FlowCraft system architecture.</sub>
 </p>
 
-The Next.js frontend owns graph interaction and execution visualization. The Express backend owns authentication, validation, persistence, AI orchestration, and DAG execution. MongoDB stores users, workflows, and execution history, while Socket.IO streams runtime events to the browser.
+The Next.js frontend owns graph interaction and execution visualization. The Express backend owns authentication, validation, immutable revision persistence, AI orchestration, integrity verification, and DAG execution. MongoDB stores workflow roots, immutable workflow revisions, users, and execution history. Every new execution pins the exact revision ID, revision number, and definition hash before work begins; Socket.IO streams runtime events to the authorized browser.
 
 ### Shared workflow pipeline
 
@@ -223,16 +238,17 @@ sequenceDiagram
     end
 
     API->>API: Validate schemas and graph rules
-    API->>DB: Persist user-scoped workflow
+    API->>DB: Atomically persist root pointer + immutable revision
     API-->>UI: Return validated graph
 
     User->>UI: Run workflow
     UI->>API: Start execution
-    API->>Engine: Execute DAG
+    API->>DB: Pin current revision and canonical hash
+    API->>Engine: Execute the pinned DAG
     Engine-->>Socket: Emit node lifecycle events
     Socket-->>UI: Update live node states
     Engine->>DB: Persist execution record
-    DB-->>UI: Provide history and replay data
+    DB-->>UI: Provide revision and execution history
 ```
 
 ## State Management
@@ -242,8 +258,10 @@ FlowCraft separates client state by domain rather than placing the entire applic
 | Store | Responsibility | Persisted |
 |---|---|---:|
 | `workflowStore` | Nodes, edges, workflow metadata, and editing operations | Yes |
-| `executionStore` | Active execution, node states, logs, and replay | No |
+| `executionStore` | Active execution, node states, logs, and historical-run selection | No |
 | `uiStore` | Selection, panels, layout, and inspector state | No |
+| `revisionHistoryStore` | Paginated history, historical preview, and restore state | No |
+| `revisionComparisonStore` | Directional comparison and isolated comparison graph state | No |
 
 This reduces prop drilling, isolates transient execution state, and keeps graph persistence independent from temporary interface behavior.
 
@@ -259,7 +277,7 @@ Claude output is validated before it reaches the active workflow. Generated node
 
 ### Streaming execution without polling
 
-The server emits node-level events through Socket.IO. The frontend updates progress as each node runs and later retrieves persisted history for replay.
+The server emits node-level events through Socket.IO. The frontend updates progress as each node runs and later retrieves persisted execution history for inspection.
 
 ### Cross-origin production deployment
 
@@ -306,7 +324,7 @@ Automated tests cover:
 - execution regressions
 - account-security accessibility and forms
 
-The project currently includes **41+ automated tests**, with additional targeted regression coverage added as new execution and AI-validation cases are identified.
+The release gate runs the complete client and server Vitest suites plus Playwright browser coverage. Current coverage includes authentication, graph validation and execution, immutable revision writes, optimistic concurrency, history and restore, semantic comparison, AI lineage, migration integrity, state isolation, security boundaries, and the final dark-product walkthrough. Use `npm test` and `CI=true npm run test:e2e` for authoritative counts in the current checkout.
 
 ## Getting Started
 
@@ -325,6 +343,29 @@ cp .env.example .env
 npm install
 npm run dev
 ```
+
+Existing deployments must backfill workflow roots before serving revision-dependent traffic. The Phase 2 server intentionally returns `WORKFLOW_MIGRATION_REQUIRED` for a legacy workflow without a current revision pointer.
+
+From the server package, first inspect the operator contracts without connecting to MongoDB:
+
+```bash
+cd server
+npm run migrate:workflow-revisions -- --help
+npm run verify:workflow-revisions -- --help
+```
+
+After backing up the intended database and confirming its identity, run:
+
+```bash
+cd server
+npm run migrate:workflow-revisions -- --dry-run
+npm run migrate:workflow-revisions
+npm run verify:workflow-revisions
+```
+
+Add `--batch-size=N` (1–1000, default 100) to any maintenance command when a different bounded batch size is required. Dry run validates and reports intended work with zero writes. Write migration is explicit, observable, restartable, idempotent, and refuses to begin unless MongoDB reports transaction-capable replica-set or sharded topology. The read-only verifier checks pointers, ownership, lineage, and canonical hashes after migration. Manual legacy workflows ignore stray AI metadata; trustworthy metadata is preserved only when the legacy root is marked AI-generated. Pre-revision execution runs remain truthfully unpinned—the migration never assigns fabricated revision provenance. Any invalid, ambiguous, corrupt, or failed record makes the command exit nonzero.
+
+Safe production ordering is operational, not transparent mixed-version serving: back up the database; make the Phase 2 server artifact and maintenance commands available while revision-dependent traffic remains stopped; run dry-run, real migration, and the verifier; then expose the Phase 2 server and frontend. The migration is additive and retains legacy root graph fields, but an old server would ignore revision pointers and could create split-brain writes. Do not roll application code back after migration without restoring the database backup or proving compatibility separately. Never run maintenance against an unverified `MONGODB_URI`; structured logs contain workflow identifiers and result codes, not graph bodies or prompts.
 
 ### Frontend
 
@@ -364,11 +405,20 @@ TRUSTED_ORIGINS=https://your-frontend.example.com
 | `POST` | `/api/auth/register` | Create an account |
 | `POST` | `/api/auth/login` | Start an authenticated session |
 | `GET` | `/api/auth/me` | Return the authenticated user |
+| `POST` | `/api/auth/logout` | Clear the authenticated session |
+| `POST` | `/api/auth/socket-ticket` | Mint a one-time Socket.IO ticket |
 | `POST` | `/api/auth/change-password` | Change the current password |
 | `GET` | `/api/workflows` | List the current user’s workflows |
 | `POST` | `/api/workflows` | Create a workflow |
+| `GET` | `/api/workflows/:id/revisions` | List immutable revision history |
+| `GET` | `/api/workflows/:id/revisions/:revision` | Read an exact immutable revision |
+| `GET` | `/api/workflows/:id/revisions/:from/compare/:to` | Compare two revisions directionally |
+| `POST` | `/api/workflows/:id/revisions/:revision/restore` | Restore as a new revision |
+| `GET` | `/api/workflows/:id/ai-prompt-context` | Resolve current definition prompt lineage |
 | `POST` | `/api/executions/:id/run` | Execute a workflow |
+| `GET` | `/api/executions/run/:runId/provenance` | Inspect exact execution revision provenance |
 | `POST` | `/api/ai/generate` | Generate and validate a workflow |
+| `POST` | `/api/ai/workflows/:id/regenerate` | Generate and atomically persist a new AI revision |
 
 ## Demo Workspace Safety
 
@@ -392,7 +442,6 @@ FlowCraft does not seed or reset production data automatically.
 ## Roadmap
 
 - Parallel execution for independent DAG branches
-- Workflow versioning and comparison
 - Scheduled and recurring executions
 - Sandboxed transform execution
 - Reusable workflow templates

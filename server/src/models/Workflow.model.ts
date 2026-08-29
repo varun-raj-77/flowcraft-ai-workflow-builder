@@ -6,8 +6,27 @@ export interface IWorkflow {
   userId: string;
   name: string;
   description?: string;
-  nodes: unknown[];
-  edges: unknown[];
+  currentRevisionId?: mongoose.Types.ObjectId;
+  currentRevision?: number;
+  /** Legacy pre-revision data. Used only by the explicit migration command. */
+  nodes?: Array<{
+    id: string;
+    type: string;
+    label: string;
+    position: { x: number; y: number };
+    config: Record<string, unknown>;
+    description?: string;
+  }>;
+  /** Legacy pre-revision data. Used only by the explicit migration command. */
+  edges?: Array<{
+    id: string;
+    source: string;
+    target: string;
+    sourceHandle?: string;
+    targetHandle?: string;
+    conditionBranch?: string;
+    label?: string;
+  }>;
   isGeneratedByAI: boolean;
   generationMetadata?: {
     originalPrompt: string;
@@ -55,29 +74,41 @@ const workflowSchema = new Schema<IWorkflow>(
     // discriminated unions (different config shapes per node type).
     nodes: {
       type: [Schema.Types.Mixed],
-      default: [],
+      default: undefined,
     },
     edges: {
       type: [Schema.Types.Mixed],
-      default: [],
+      default: undefined,
     },
     isGeneratedByAI: {
       type: Boolean,
       default: false,
     },
     generationMetadata: {
-      originalPrompt: { type: String, maxlength: 2000 },
-      generatedAt: { type: Date },
-      provider: { type: String, maxlength: 100 },
-      model: { type: String, maxlength: 100 },
-      capabilityCoverage: {
-        requestedCapabilities: [String],
-        implementedCapabilities: [String],
-        missingCapabilities: [String],
-        unsupportedCapabilities: [String],
-        coverage: Number,
-        isComplete: Boolean,
-      },
+      type: new Schema({
+        originalPrompt: { type: String, maxlength: 2000 },
+        generatedAt: { type: Date },
+        provider: { type: String, maxlength: 100 },
+        model: { type: String, maxlength: 100 },
+        capabilityCoverage: {
+          requestedCapabilities: [String],
+          implementedCapabilities: [String],
+          missingCapabilities: [String],
+          unsupportedCapabilities: [String],
+          coverage: Number,
+          isComplete: Boolean,
+        },
+      }, { _id: false }),
+      default: undefined,
+    },
+    currentRevisionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'WorkflowRevision',
+      index: true,
+    },
+    currentRevision: {
+      type: Number,
+      min: 1,
     },
   },
   {
@@ -88,6 +119,7 @@ const workflowSchema = new Schema<IWorkflow>(
         return {
           ...ret,
           _id: String(ret._id),
+          currentRevisionId: ret.currentRevisionId?.toString(),
           __v: undefined,
         };
       },

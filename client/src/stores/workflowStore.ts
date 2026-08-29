@@ -24,7 +24,7 @@ import { hasCompleteGenerationMetadata } from '@/lib/workflowSavePayload';
  * We use `type` as the React Flow node type string (maps to nodeTypes registry).
  * All our domain data goes into `data`.
  */
-function toFlowNode(node: WorkflowNode): Node<FlowNodeData> {
+export function toFlowNode(node: WorkflowNode): Node<FlowNodeData> {
   return {
     id: node.id,
     type: node.type,            // This maps to the custom component in nodeTypes.ts
@@ -42,7 +42,7 @@ function toFlowNode(node: WorkflowNode): Node<FlowNodeData> {
  * Convert our WorkflowEdge → React Flow Edge.
  * Our edge shape is already very close to React Flow's.
  */
-function toFlowEdge(edge: WorkflowEdge): Edge {
+export function toFlowEdge(edge: WorkflowEdge): Edge {
   return {
     id: edge.id,
     source: edge.source,
@@ -98,6 +98,9 @@ interface WorkflowMeta {
   description?: string;
   isGeneratedByAI: boolean;
   generationMetadata?: GenerationMetadata;
+  currentRevision?: number;
+  currentRevisionId?: string;
+  definitionHash?: string;
 }
 
 interface WorkflowSnapshot {
@@ -252,6 +255,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         description: workflow.description,
         isGeneratedByAI: workflow.isGeneratedByAI,
         generationMetadata: workflow.generationMetadata,
+        currentRevision: workflow.currentRevision,
+        currentRevisionId: workflow.currentRevisionId,
+        definitionHash: workflow.definitionHash,
         },
       };
       return { ...next, isDirty: false, undoStack: [], redoStack: [], savedSnapshot: cloneSnapshot(next), dragSnapshot: null };

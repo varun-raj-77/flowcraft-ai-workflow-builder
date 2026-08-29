@@ -3,21 +3,94 @@
 @tailwind utilities;
 
 :root {
-  --color-canvas-bg: #fafafa;
-  --color-canvas-grid: #e4e4e7;
+  color-scheme: dark;
+  --surface-canvas: #08080b;
+  --surface-shell: #0c0c10;
+  --surface-base: #111116;
+  --surface-raised: #17171e;
+  --surface-overlay: #1c1c24;
+  --surface-hover: #22222c;
+  --surface-selected: #242035;
+  --border-faint: #1c1c24;
+  --border-subtle: #292932;
+  --border-default: #373742;
+  --border-active: #8b5cf6;
+  --text-primary: #f4f4f5;
+  --text-secondary: #c7c7d0;
+  --text-muted: #90909e;
+  --text-disabled: #5f5f6a;
+  --accent: #8b5cf6;
+  --accent-strong: #7c3aed;
+  --accent-surface: rgb(139 92 246 / 0.12);
+  --accent-border: rgb(139 92 246 / 0.38);
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #fb7185;
+  --info: #7dd3fc;
+  --focus-ring: rgb(167 139 250 / 0.78);
+  --overlay: rgb(0 0 0 / 0.74);
+  --code-surface: #09090d;
+  --scrollbar: rgb(161 161 170 / 0.32);
+  --color-canvas-bg: var(--surface-canvas);
+  --color-canvas-grid: #27272f;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-canvas-bg: #09090b;
-    --color-canvas-grid: #27272a;
+body {
+  background: var(--surface-shell);
+  color: var(--text-primary);
+}
+
+@layer components {
+  .fc-panel {
+    border-color: var(--border-subtle);
+    background: var(--surface-base);
+    color: var(--text-primary);
+  }
+
+  .fc-panel-raised {
+    border-color: var(--border-default);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+
+  .fc-kicker {
+    @apply text-[11px] font-semibold uppercase tracking-[0.13em];
+    color: var(--text-muted);
+  }
+
+  .fc-focus {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-offset-1;
+    --tw-ring-color: var(--focus-ring);
+    --tw-ring-offset-color: var(--surface-shell);
+  }
+
+  .fc-control {
+    @apply rounded-md border px-2.5 py-2 text-xs outline-none transition-colors;
+    border-color: var(--border-default);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+
+  .fc-control:hover {
+    border-color: #4a4a58;
+    background: var(--surface-overlay);
+  }
+
+  .fc-control:focus {
+    border-color: var(--border-active);
+    box-shadow: 0 0 0 2px var(--accent-surface);
+  }
+
+  .fc-empty-state {
+    @apply rounded-xl border border-dashed px-5 py-5 text-center;
+    border-color: var(--border-default);
+    background: rgb(17 17 22 / 0.9);
   }
 }
 
-/* Smooth scrollbar for panels */
-.overflow-y-auto {
+* {
   scrollbar-width: thin;
-  scrollbar-color: rgb(161 161 170 / 0.3) transparent;
+  scrollbar-color: var(--scrollbar) transparent;
 }
 
 /* Remove React Flow default attribution in dev */
@@ -26,8 +99,8 @@
 }
 
 @keyframes node-running {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(96 165 250 / 0.15); }
-  50% { box-shadow: 0 0 0 8px rgb(96 165 250 / 0); }
+  0%, 100% { box-shadow: 0 0 0 1px rgb(125 211 252 / 0.26); }
+  50% { box-shadow: 0 0 0 3px rgb(125 211 252 / 0.08); }
 }
 
 @keyframes node-complete {
@@ -38,6 +111,47 @@
 
 .animate-node-running { animation: node-running 1.4s ease-in-out infinite; }
 .animate-node-complete { animation: node-complete 420ms ease-out both; }
+
+.react-flow__edge-path {
+  stroke: #5a5a68;
+  stroke-width: 1.7;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 2.4;
+}
+
+.react-flow__edge-textbg {
+  fill: var(--surface-raised);
+}
+
+.react-flow__edge-text {
+  fill: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.react-flow__nodesselection-rect,
+.react-flow__selection {
+  background: rgb(139 92 246 / 0.08);
+  border: 1px dashed rgb(167 139 250 / 0.55);
+}
+
+/* "output" is a FlowCraft custom node type, but React Flow also uses that
+   class for its built-in output card. Neutralize the built-in light card. */
+.react-flow__node-output {
+  width: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  text-align: initial !important;
+}
+
+.react-flow__controls button {
+  color: var(--text-secondary);
+}
 
 ::selection {
   background: rgb(139 92 246 / 0.22);

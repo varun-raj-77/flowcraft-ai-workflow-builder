@@ -51,6 +51,31 @@ export function validateParams(schema: ZodSchema) {
       return;
     }
 
+    req.params = result.data as Request['params'];
+    next();
+  };
+}
+
+/**
+ * Creates an Express middleware that validates req.query against a Zod schema.
+ * On success, coerced/defaulted values replace the original query object.
+ */
+export function validateQuery(schema: ZodSchema) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const result = schema.safeParse(req.query);
+
+    if (!result.success) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Request query validation failed',
+          details: formatZodErrors(result.error),
+        },
+      });
+      return;
+    }
+
+    req.query = result.data as Request['query'];
     next();
   };
 }

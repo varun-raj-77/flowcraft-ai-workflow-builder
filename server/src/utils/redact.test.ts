@@ -15,4 +15,9 @@ describe('secret redaction', () => {
   it('redacts common secret-shaped text before console output', () => {
     expect(redactText('Authorization: Bearer value token=abc')).toBe('Authorization: Bearer [REDACTED] token=[REDACTED]');
   });
+
+  it('redacts passwords embedded in connection URIs', () => {
+    expect(redactText('mongodb+srv://operator:database-password@example.test/flowcraft'))
+      .toBe('mongodb+srv://operator:[REDACTED]@example.test/flowcraft');
+  });
 });
