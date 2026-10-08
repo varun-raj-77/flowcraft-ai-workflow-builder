@@ -135,8 +135,12 @@ describe('workflow revision integrity across real Mongoose hydration', () => {
     const definition = { nodes, edges, generationMetadata: olderMetadata };
     const { readDocument, definitionHash } = schemaPersistenceRoundTrip(definition);
 
-    expect(verifyWorkflowRevisionIntegrity(readDocument)).toEqual(definition);
-    expect(calculateDefinitionHash(verifyWorkflowRevisionIntegrity(readDocument))).toBe(definitionHash);
+    const verified = verifyWorkflowRevisionIntegrity(readDocument);
+    expect(verified).toEqual({
+      ...definition,
+      generationMetadata: { ...olderMetadata, generatedAt: new Date(olderMetadata.generatedAt) },
+    });
+    expect(calculateDefinitionHash(verified)).toBe(definitionHash);
   });
 
   it('C3. normalizes only synthetic empty coverage and still hashes actual coverage changes', () => {
