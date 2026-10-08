@@ -101,6 +101,20 @@ describe('workflow dirty-state contract', () => {
     expect(useWorkflowStore.getState().isDirty).toBe(false);
   });
 
+  it('stages a new AI draft without carrying a previously loaded workflow identity', () => {
+    useWorkflowStore.getState().setWorkflow(workflow);
+    const metadata = {
+      originalPrompt: 'Count posts', generatedAt: '2026-01-01T00:00:00.000Z',
+      capabilityCoverage: { requestedCapabilities: [], implementedCapabilities: [], missingCapabilities: [], unsupportedCapabilities: [], coverage: 1, isComplete: true },
+    };
+    useWorkflowStore.getState().applyGeneratedWorkflow({ name: 'Count Posts', nodes: [], edges: [], generationMetadata: metadata }, true);
+    const state = useWorkflowStore.getState();
+    expect(state.meta).toEqual({ _id: '', name: 'Count Posts', description: undefined, isGeneratedByAI: true, generationMetadata: metadata });
+    expect(state.isDirty).toBe(true);
+    expect(state.undoStack).toHaveLength(0);
+    expect(state.redoStack).toHaveLength(0);
+  });
+
   it('treats a complete AI generation as one atomic undoable replacement', () => {
     useWorkflowStore.getState().setWorkflow(workflow);
     const metadata = { originalPrompt: 'Create a workflow', generatedAt: '2026-01-01T00:00:00.000Z', capabilityCoverage: { requestedCapabilities: [], implementedCapabilities: [], missingCapabilities: [], unsupportedCapabilities: [], coverage: 1, isComplete: true } };
