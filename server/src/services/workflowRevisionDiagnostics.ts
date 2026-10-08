@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import type { IWorkflowRevisionDocument } from '../models/WorkflowRevision.model';
 import {
   calculateDefinitionHash,
+  canonicalizeWorkflowDefinition,
   normalizeAndValidateWorkflowGraph,
   normalizeWorkflowGenerationMetadata,
   type WorkflowDefinition,
@@ -131,9 +132,37 @@ export function diagnoseRevisionIntegrity(revision: RevisionData): RevisionInteg
 }
 
 
+
+function changedPaths(left: unknown, right: unknown, limit = 20): string[] {
+  const differences: string[] = [];
+  const walk = (a: unknown, b: unknown, path: string): void => {
+    if (differences.length >= limit || Object.is(a, b)) return;
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) differences.push(path + '.length');
+      for (let i = 0; i < Math.min(a.length, b.length) && differences.length < limit; i += 1) {
+        walk(a[i], b[i], path + '[' + i + ']');
+      }
+      return;
+    }
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const ao = a as Record<string, unknown>;
+      const bo = b as Record<string, unknown>;
+      for (const key of [...new Set([...Object.keys(ao), ...Object.keys(bo)])].sort()) {
+        if (differences.length >= limit) break;
+        walk(ao[key], bo[key], path ? path + '.' + key : key);
+      }
+      return;
+    }
+    differences.push(path);
+  };
+  walk(left, right, '');
+  return differences;
+}
+
 export interface LegacyRootFingerprint {
   legacyRootPresent: boolean;
   rootGraphMatchesRevision?: boolean;
+  rootGraphChangePaths?: string[];
   rootMetadataCurrentHashMatches?: boolean;
   rootMetadataPreHotfixHashMatches?: boolean;
 }
@@ -172,6 +201,12 @@ export function diagnoseLegacyRootFingerprint(
     return {
       legacyRootPresent: true,
       rootGraphMatchesRevision,
+      ...(rootGraphMatchesRevision ? {} : {
+        rootGraphChangePaths: changedPaths(
+          canonicalizeWorkflowDefinition(legacyGraph),
+          canonicalizeWorkflowDefinition(revisionGraph),
+        ),
+      }),
       rootMetadataCurrentHashMatches: calculateDefinitionHash(currentDefinition) === revision.definitionHash,
       rootMetadataPreHotfixHashMatches: preHotfix,
     };
