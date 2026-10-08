@@ -129,3 +129,53 @@ export function diagnoseRevisionIntegrity(revision: RevisionData): RevisionInteg
     status: matches.currentCanonical ? 'valid' as const : 'hash_mismatch' as const,
   };
 }
+
+
+export interface LegacyRootFingerprint {
+  legacyRootPresent: boolean;
+  rootGraphMatchesRevision?: boolean;
+  rootMetadataCurrentHashMatches?: boolean;
+  rootMetadataPreHotfixHashMatches?: boolean;
+}
+
+/**
+ * The additive 2026 migration retained legacy root graph/metadata. Comparing
+ * both original and immutable-revision representations can identify an
+ * old Mongoose serialization issue without assuming the damaged hash is valid.
+ */
+export function diagnoseLegacyRootFingerprint(
+  revision: RevisionData,
+  root: { nodes?: unknown; edges?: unknown; generationMetadata?: unknown },
+): LegacyRootFingerprint {
+  if (!root.nodes || !root.edges) return { legacyRootPresent: false };
+  try {
+    const legacyGraph = normalizeAndValidateWorkflowGraph(root.nodes, root.edges);
+    const revisionGraph = normalizeAndValidateWorkflowGraph(revision.nodes, revision.edges);
+    const rootGraphMatchesRevision =
+      calculateDefinitionHash(legacyGraph) === calculateDefinitionHash(revisionGraph);
+    const metadata = root.generationMetadata
+      ? normalizeWorkflowGenerationMetadata(root.generationMetadata)
+      : undefined;
+    const currentDefinition: WorkflowDefinition = {
+      ...legacyGraph,
+      ...(metadata ? { generationMetadata: metadata } : {}),
+    };
+    const preHotfixDefinition: WorkflowDefinition = {
+      ...legacyGraph,
+      ...(root.generationMetadata
+        ? { generationMetadata: root.generationMetadata as WorkflowDefinition['generationMetadata'] }
+        : {}),
+    };
+    let preHotfix = false;
+    try { preHotfix = legacySpreadHash(preHotfixDefinition) === revision.definitionHash; }
+    catch { /* Historic document internals need not be reproducible. */ }
+    return {
+      legacyRootPresent: true,
+      rootGraphMatchesRevision,
+      rootMetadataCurrentHashMatches: calculateDefinitionHash(currentDefinition) === revision.definitionHash,
+      rootMetadataPreHotfixHashMatches: preHotfix,
+    };
+  } catch {
+    return { legacyRootPresent: true };
+  }
+}
