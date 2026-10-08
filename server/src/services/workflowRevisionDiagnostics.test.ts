@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
 import { WorkflowRevision } from '../models/WorkflowRevision.model';
 import { calculateDefinitionHash, type WorkflowDefinition } from './workflowDefinition';
-import { diagnoseRevisionIntegrity } from './workflowRevisionDiagnostics';
+import { diagnoseRevisionIntegrity, diagnoseLegacyRootFingerprint } from './workflowRevisionDiagnostics';
 
 const definition: WorkflowDefinition = {
   nodes: [
@@ -70,4 +70,27 @@ describe('safe revision fingerprint diagnostics', () => {
     expect(result.status).toBe('structural_validation_failed');
     expect(JSON.stringify(result)).not.toContain('Simple workflow');
   });
+  it('checks retained legacy root without revising the stored hash', () => {
+    const currentHash = calculateDefinitionHash(definition);
+    const revision = savedRevision(definition, currentHash);
+    const preservedRoot = {
+      nodes: definition.nodes,
+      edges: definition.edges,
+      generationMetadata: definition.generationMetadata,
+    };
+    const result = diagnoseLegacyRootFingerprint(revision, preservedRoot);
+    expect(result).toMatchObject({
+      legacyRootPresent: true,
+      rootGraphMatchesRevision: true,
+      rootMetadataCurrentHashMatches: true,
+      rootMetadataPreHotfixHashMatches: true,
+    });
+    expect(revision.definitionHash).toBe(currentHash);
+  });
+
+  it('reports missing legacy data without inventing recovery evidence', () => {
+    const revision = savedRevision(definition, calculateDefinitionHash(definition));
+    expect(diagnoseLegacyRootFingerprint(revision, {})).toEqual({ legacyRootPresent: false });
+  });
+
 });
