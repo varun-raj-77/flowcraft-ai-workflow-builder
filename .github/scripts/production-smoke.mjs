@@ -249,6 +249,43 @@ async function main() {
     if (generated.generationMetadata?.capabilityCoverage?.isComplete !== true) throw new Error('AI capability coverage incomplete');
     return 'schema valid and coverage complete';
   });
+
+  // Verify the remaining visible AI examples against the real provider.
+  // Generated candidates are not persisted or executed.
+  const examples = [
+    {
+      name: 'sum numbers',
+      prompt: "Start the workflow, use a JavaScript Transform node to calculate the sum of the numbers [10, 20, 30], log the sum with an Output node, then end the workflow.",
+      types: ['transform', 'output'],
+    },
+    {
+      name: 'condition branches',
+      prompt: "Start the workflow, check the condition 10 > 5, log 'Check passed' on the true branch or 'Check failed' on the false branch, then end the workflow.",
+      types: ['condition', 'output'],
+    },
+    {
+      name: 'public GET',
+      prompt: "Start the workflow, fetch public posts from https://jsonplaceholder.typicode.com/posts using a GET API Call with no authentication, log the HTTP response status, then end the workflow.",
+      types: ['api_call', 'output'],
+    },
+  ];
+  for (const example of examples) {
+    await attempt('AI example: ' + example.name, async () => {
+      const generated = requireStatus(
+        await api('/api/ai/generate', 'POST', { prompt: example.prompt }),
+        200, 'POST example ' + example.name,
+      );
+      if (generated?.generationMetadata?.capabilityCoverage?.isComplete !== true) {
+        throw new Error('Incomplete capability coverage');
+      }
+      const types = new Set(generated.nodes?.map((n) => n.type));
+      for (const type of example.types) {
+        if (!types.has(type)) throw new Error('Missing generated node: ' + type);
+      }
+      return 'validated graph with ' + generated.nodes.length + ' nodes';
+    });
+  }
+
 }
 
 try {

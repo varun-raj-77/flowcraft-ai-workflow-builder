@@ -1,5 +1,5 @@
 name: Production smoke (disposable demo workflow)
-# Extended production smoke: authentication, graph branches, transforms and API headers.
+# Verify every visible AI Builder prompt with the live provider, plus persistence, auth and execution.
 
 on:
   pull_request:
