@@ -1,5 +1,5 @@
 name: Production smoke (disposable demo workflow)
-# PR probe: compare retained migration roots with live immutable revisions.
+# PR probe: print only changed canonical graph field paths for legacy v1 migration mismatches.
 
 on:
   pull_request:
