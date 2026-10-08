@@ -126,6 +126,45 @@ describe('workflow revision integrity across real Mongoose hydration', () => {
     );
   });
 
+  it('C2. verifies older AI revisions without capability coverage after Mongoose hydration', () => {
+    const olderMetadata: WorkflowGenerationMetadata = {
+      originalPrompt: 'Count users from a public API',
+      generatedAt: '2026-07-23T12:00:00.000Z',
+      provider: 'anthropic',
+    };
+    const definition = { nodes, edges, generationMetadata: olderMetadata };
+    const { readDocument, definitionHash } = schemaPersistenceRoundTrip(definition);
+
+    expect(verifyWorkflowRevisionIntegrity(readDocument)).toEqual(definition);
+    expect(calculateDefinitionHash(verifyWorkflowRevisionIntegrity(readDocument))).toBe(definitionHash);
+  });
+
+  it('C3. normalizes only synthetic empty coverage and still hashes actual coverage changes', () => {
+    const originalMetadata: WorkflowGenerationMetadata = {
+      originalPrompt: 'Count users',
+      generatedAt: '2026-07-23T12:00:00.000Z',
+    };
+    const implicitDefaults = {
+      ...originalMetadata,
+      capabilityCoverage: {
+        requestedCapabilities: [], implementedCapabilities: [],
+        missingCapabilities: [], unsupportedCapabilities: [],
+      },
+    };
+    expect(normalizeWorkflowGenerationMetadata(implicitDefaults)).toEqual(originalMetadata);
+
+    const completeCoverage = {
+      ...originalMetadata,
+      capabilityCoverage: {
+        requestedCapabilities: [], implementedCapabilities: [],
+        missingCapabilities: [], unsupportedCapabilities: [],
+        coverage: 1, isComplete: true,
+      },
+    };
+    expect(calculateDefinitionHash({ nodes, edges, generationMetadata: completeCoverage }))
+      .not.toBe(calculateDefinitionHash({ nodes, edges, generationMetadata: originalMetadata }));
+  });
+
   it('D. canonicalizes generatedAt Date and string representations deterministically', () => {
     const stringDefinition = { nodes, edges, generationMetadata };
     const dateDefinition = {
