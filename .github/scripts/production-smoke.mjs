@@ -92,11 +92,16 @@ async function main() {
 
   const targets = list.slice(0, 30); // Bounded read-only audit.
   for (const workflow of targets) {
-    await attempt('existing workflow: ' + workflow.name + ' rev ' + (workflow.currentRevision ?? '?') + ' (' + workflow._id + ')', async () => {
+    const title = 'existing workflow: ' + workflow.name + ' rev ' + (workflow.currentRevision ?? '?') + ' (' + workflow._id + ')';
+    await attempt(title, async () => {
       const read = requireStatus(await api('/api/workflows/' + workflow._id), 200, 'GET existing workflow');
       if (!Array.isArray(read?.nodes)) throw new Error('Saved graph missing');
       return read.nodes.length + ' nodes';
     });
+    // The diagnostic route is read-only and emits no graph bodies or prompts.
+    const diagnostic = await api('/api/workflows/' + workflow._id + '/revision-integrity-diagnostics');
+    const category = diagnostic.data ?? { status: 'route_unavailable', httpStatus: diagnostic.status, errorCode: diagnostic.errorCode };
+    console.log('REVISION_FINGERPRINT ' + workflow.name + ' (' + workflow._id + ') ' + JSON.stringify(category));
   }
   if (targets.length === 0) report('existing demo workflows', true, 'No existing records to inspect');
 
