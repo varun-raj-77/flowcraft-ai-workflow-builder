@@ -80,11 +80,12 @@ async function main() {
   cookie = token[1];
   report('real production login', true);
 
-  await attempt('session verification', async () => {
+  const demoVerified = await attempt('session verification', async () => {
     const me = requireStatus(await api('/api/auth/me'), 200, 'GET /auth/me');
     if (!me?.isDemoAccount) throw new Error('Logged into an unexpected account (aborting writes)');
     return 'confirmed shared demo account';
   });
+  if (!demoVerified) throw new Error('Demo authorization not verified; aborting production mutations');
   const list = requireStatus(await api('/api/workflows'), 200, 'GET /workflows');
   if (!Array.isArray(list)) throw new Error('List response was not an array');
   report('production dashboard list', true, String(list.length) + ' workflows');
