@@ -1,5 +1,5 @@
 name: Production smoke (disposable demo workflow)
-# Final verification after production PR #31: eight workflows and empty API headers.
+# Extended production smoke: authentication, graph branches, transforms and API headers.
 
 on:
   pull_request:
