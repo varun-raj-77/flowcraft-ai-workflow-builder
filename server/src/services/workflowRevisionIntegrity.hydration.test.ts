@@ -97,11 +97,6 @@ describe('workflow revision integrity across real Mongoose hydration', () => {
     const { readDocument } = schemaPersistenceRoundTrip(definition, creationHash);
 
     expect(readDocument.generationMetadata?.constructor.name).toBe('SingleNested');
-    const rawHydratedHash = calculateDefinitionHash({
-      nodes: readDocument.nodes as unknown as WorkflowDefinition['nodes'],
-      edges: readDocument.edges as unknown as WorkflowDefinition['edges'],
-      generationMetadata: readDocument.generationMetadata!,
-    });
     const verifierGraph = normalizeAndValidateWorkflowGraph(readDocument.nodes, readDocument.edges);
     const hydratedLogicalHash = calculateDefinitionHash({
       ...verifierGraph,
@@ -110,10 +105,74 @@ describe('workflow revision integrity across real Mongoose hydration', () => {
     const verifiedDefinition = verifyWorkflowRevisionIntegrity(readDocument);
     const verifierHash = calculateDefinitionHash(verifiedDefinition);
 
-    // Raw ODM serialization may minimize empty config objects; it is not the verifier input.
-    expect(rawHydratedHash).not.toBe(creationHash);
     expect(hydratedLogicalHash).toBe(creationHash);
     expect(verifierHash).toBe(creationHash);
+  });
+
+  it('B2. stores empty API header objects without minimizing them away', () => {
+    const apiNodes: WorkflowDefinition['nodes'] = [
+      nodes[0],
+      {
+        id: 'fetch', type: 'api_call', label: 'Fetch public API',
+        position: { x: 120, y: 0 },
+        config: { url: 'https://example.test/users', method: 'GET', headers: {} },
+      },
+      nodes[1],
+    ];
+    const definition: WorkflowDefinition = {
+      nodes: apiNodes,
+      edges: [
+        { id: 'start-fetch', source: 'start', target: 'fetch' },
+        { id: 'fetch-end', source: 'fetch', target: 'end' },
+      ],
+      generationMetadata,
+    };
+    const { persisted, readDocument, definitionHash } = schemaPersistenceRoundTrip(definition);
+    expect(persisted.nodes[1].config).toHaveProperty('headers', {});
+    const verified = verifyWorkflowRevisionIntegrity(readDocument);
+    expect(calculateDefinitionHash(verified)).toBe(definitionHash);
+  });
+
+  it('B3. accepts an older missing empty API headers field only with the original hash', () => {
+    const apiNodes: WorkflowDefinition['nodes'] = [
+      nodes[0],
+      {
+        id: 'fetch', type: 'api_call', label: 'Fetch public API',
+        position: { x: 120, y: 0 },
+        config: { url: 'https://example.test/users', method: 'GET', headers: {} },
+      },
+      nodes[1],
+    ];
+    const original: WorkflowDefinition = {
+      nodes: apiNodes,
+      edges: [
+        { id: 'start-fetch', source: 'start', target: 'fetch' },
+        { id: 'fetch-end', source: 'fetch', target: 'end' },
+      ],
+      generationMetadata,
+    };
+    const missingHeaders: WorkflowDefinition = {
+      ...original,
+      nodes: apiNodes.map((node) => node.id === 'fetch'
+        ? { ...node, config: { url: 'https://example.test/users', method: 'GET' } }
+        : node),
+    };
+    const { readDocument } = schemaPersistenceRoundTrip(missingHeaders, calculateDefinitionHash(original));
+    const before = readDocument.toObject();
+    const verified = verifyWorkflowRevisionIntegrity(readDocument);
+    expect(verified.nodes[1].config).toHaveProperty('headers', {});
+    expect(calculateDefinitionHash(verified)).toBe(readDocument.definitionHash);
+    expect(readDocument.toObject()).toEqual(before);
+    expect(readDocument.modifiedPaths()).toEqual([]);
+
+    const tampered: WorkflowDefinition = {
+      ...missingHeaders,
+      nodes: missingHeaders.nodes.map((node) => node.id === 'fetch'
+        ? { ...node, config: { url: 'https://example.test/tampered', method: 'GET' } }
+        : node),
+    };
+    const bad = schemaPersistenceRoundTrip(tampered, calculateDefinitionHash(original));
+    expectIntegrityError(() => verifyWorkflowRevisionIntegrity(bad.readDocument));
   });
 
   it('C. preserves capability coverage through schema persistence and verifies it', () => {
