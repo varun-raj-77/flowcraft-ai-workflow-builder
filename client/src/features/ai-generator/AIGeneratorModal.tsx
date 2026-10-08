@@ -143,7 +143,7 @@ export function AIGeneratorModal({ mode = 'create' }: AIGeneratorModalProps) {
       };
 
       // A complete generation is one atomic workflow-history entry.
-      applyGeneratedWorkflow(workflow);
+      applyGeneratedWorkflow(workflow, true);
       closeModal();
       setPrompt('');
 
