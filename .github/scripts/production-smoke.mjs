@@ -99,7 +99,14 @@ async function main() {
       return read.nodes.length + ' nodes';
     });
     // The diagnostic route is read-only and emits no graph bodies or prompts.
-    const diagnostic = await api('/api/workflows/' + workflow._id + '/revision-integrity-diagnostics');
+    let diagnostic = await api('/api/workflows/' + workflow._id + '/revision-integrity-diagnostics');
+    // Wait for Railway's backend deployment to expose the expanded report.
+    if (workflow === targets[0]) {
+      for (let retry = 0; retry < 8 && (diagnostic.status !== 200 || !diagnostic.data?.legacyRoot); retry += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 8000));
+        diagnostic = await api('/api/workflows/' + workflow._id + '/revision-integrity-diagnostics');
+      }
+    }
     const category = diagnostic.data ?? { status: 'route_unavailable', httpStatus: diagnostic.status, errorCode: diagnostic.errorCode };
     console.log('REVISION_FINGERPRINT ' + workflow.name + ' (' + workflow._id + ') ' + JSON.stringify(category));
   }
