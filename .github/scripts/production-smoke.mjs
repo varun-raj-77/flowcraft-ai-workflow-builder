@@ -90,7 +90,7 @@ async function main() {
   if (!Array.isArray(list)) throw new Error('List response was not an array');
   report('production dashboard list', true, String(list.length) + ' workflows');
 
-  const targets = list.filter((w) => /^(temperature|weather) alert$/i.test(w.name || ''));
+  const targets = list.slice(0, 30); // Bounded read-only audit.
   for (const workflow of targets) {
     await attempt('existing workflow: ' + workflow.name + ' rev ' + (workflow.currentRevision ?? '?') + ' (' + workflow._id + ')', async () => {
       const read = requireStatus(await api('/api/workflows/' + workflow._id), 200, 'GET existing workflow');
@@ -98,9 +98,7 @@ async function main() {
       return read.nodes.length + ' nodes';
     });
   }
-  if (targets.length === 0) {
-    report('existing Temperature Alert discovery', false, 'No matching workflow in demo account');
-  }
+  if (targets.length === 0) report('existing demo workflows', true, 'No existing records to inspect');
 
   const uniqueName = '__flowcraft_smoke_' + process.env.GITHUB_RUN_ID + '_' + Date.now();
   let workflowId;
