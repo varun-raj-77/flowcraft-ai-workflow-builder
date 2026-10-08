@@ -1,5 +1,5 @@
 name: Production smoke (disposable demo workflow)
-# PR probe: inspect field paths after current production deploy completed.
+# Final verification after production PR #31: eight workflows and empty API headers.
 
 on:
   pull_request:
