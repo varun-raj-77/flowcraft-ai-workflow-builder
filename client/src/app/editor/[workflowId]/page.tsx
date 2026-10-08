@@ -49,8 +49,10 @@ export default function EditorPage() {
         // Generated graphs may be retained, but execution state is never shared.
         useExecutionStore.getState().clearExecution();
         useExecutionStore.getState().clearHistory();
-        const currentNodes = useWorkflowStore.getState().nodes;
-        if (currentNodes.length === 0) {
+        const editorState = useWorkflowStore.getState();
+        // Keep a staged unsaved draft, but never reuse a persisted workflow's
+        // revision or ID when the URL explicitly requests a new workflow.
+        if (editorState.meta?._id || editorState.nodes.length === 0) {
           clearWorkflow();
         }
         setLoadState('ready');

@@ -59,6 +59,20 @@ afterEach(() => {
 });
 
 describe('useSaveWorkflow', () => {
+  it('creates a new record after replacing an old workflow with a new AI draft', async () => {
+    useWorkflowStore.getState().setWorkflow(savedWorkflow);
+    const metadata = {
+      originalPrompt: 'Count posts', generatedAt: '2026-01-01T00:00:00.000Z',
+      capabilityCoverage: { requestedCapabilities: [], implementedCapabilities: [], missingCapabilities: [], unsupportedCapabilities: [], coverage: 1, isComplete: true },
+    };
+    useWorkflowStore.getState().applyGeneratedWorkflow({ name: 'Count Posts', nodes: [], edges: [], generationMetadata: metadata }, true);
+    const { result } = renderHook(() => useSaveWorkflow());
+    await act(async () => { await result.current.save(); });
+    expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
+    expect(mocks.createWorkflow).toHaveBeenCalledWith(expect.objectContaining({ name: 'Count Posts', generationMetadata: metadata }));
+    expect(mocks.updateWorkflow).not.toHaveBeenCalled();
+  });
+
   it('prevents concurrent duplicate saves', async () => {
     const { result } = renderHook(() => useSaveWorkflow());
 
