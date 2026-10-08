@@ -189,6 +189,58 @@ async function main() {
     return 'API revision hash stable and empty headers retained';
   });
 
+  await attempt('reject unauthenticated workflow list', async () => {
+    const response = await fetch(new URL('/api/workflows', origin), { headers: { accept: 'application/json' } });
+    if (response.status !== 401) throw new Error('Expected HTTP 401; received ' + response.status);
+    return '401 without session cookie';
+  });
+
+  await attempt('execute deterministic transform and condition branches', async () => {
+    const id = String(Date.now());
+    const nodes = [
+      { id: 'start', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} },
+      { id: 'compute', type: 'transform', label: 'Compute', position: { x: 200, y: 0 },
+        config: { transformCode: 'return { data: 2 };' } },
+      { id: 'decide', type: 'condition', label: 'Branch', position: { x: 400, y: 0 },
+        config: { expression: 'input.compute.data === 2', trueTargetNodeId: 'yes', falseTargetNodeId: 'no' } },
+      { id: 'yes', type: 'output', label: 'Yes', position: { x: 600, y: -80 },
+        config: { logLevel: 'info', message: 'chosen {{decide.branchTaken}}' } },
+      { id: 'no', type: 'output', label: 'No', position: { x: 600, y: 80 },
+        config: { logLevel: 'info', message: 'should never execute' } },
+      { id: 'end', type: 'end', label: 'End', position: { x: 820, y: 0 }, config: {} },
+    ];
+    const edges = [
+      { id: 'e1', source: 'start', target: 'compute' },
+      { id: 'e2', source: 'compute', target: 'decide' },
+      { id: 'e3', source: 'decide', target: 'yes', sourceHandle: 'condition_true', conditionBranch: 'true' },
+      { id: 'e4', source: 'decide', target: 'no', sourceHandle: 'condition_false', conditionBranch: 'false' },
+      { id: 'e5', source: 'yes', target: 'end' },
+      { id: 'e6', source: 'no', target: 'end' },
+    ];
+    const created = requireStatus(await api('/api/workflows', 'POST', {
+      name: '__flowcraft_branch_smoke_' + id,
+      description: 'Disposable safe transform and condition check',
+      nodes, edges, isGeneratedByAI: false,
+    }), 201, 'create branching workflow');
+    if (!created?._id) throw new Error('Missing branching workflow ID');
+    ownedWorkflowIds.push(created._id);
+    const started = requireStatus(await api('/api/executions/' + created._id + '/run', 'POST'), 201, 'run branching workflow');
+    if (!started?._id) throw new Error('Missing branching run ID');
+    let final;
+    for (let i = 0; i < 12; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      final = requireStatus(await api('/api/executions/run/' + started._id), 200, 'GET branching run');
+      if (final.status !== 'running' && final.status !== 'pending') break;
+    }
+    if (final?.status !== 'completed') throw new Error('Branching run ' + final?.status + ': ' + String(final?.error || '').slice(0, 120));
+    const no = final.stepLogs?.find((step) => step.nodeId === 'no');
+    const yes = final.stepLogs?.find((step) => step.nodeId === 'yes');
+    if (no?.status !== 'skipped' || yes?.status !== 'success') {
+      throw new Error('Incorrect branch statuses: yes=' + yes?.status + ', no=' + no?.status);
+    }
+    return 'true path executed, false path skipped';
+  });
+
   // A single inexpensive AI generation probe. Never execute untrusted generated
   // graphs on the shared demo account.
   await attempt('live AI generation with simple supported prompt', async () => {
