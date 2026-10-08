@@ -1,5 +1,5 @@
 name: Production smoke (disposable demo workflow)
-# PR probe: read-only integrity fingerprints of all demo workflows.
+# PR probe: compare retained migration roots with live immutable revisions.
 
 on:
   pull_request:
