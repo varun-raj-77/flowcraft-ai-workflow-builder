@@ -93,4 +93,23 @@ describe('safe revision fingerprint diagnostics', () => {
     expect(diagnoseLegacyRootFingerprint(revision, {})).toEqual({ legacyRootPresent: false });
   });
 
+  it('returns only changed field paths when legacy and revision graphs differ', () => {
+    const rev = savedRevision(definition, calculateDefinitionHash(definition));
+    const olderGraph = {
+      nodes: definition.nodes.map((node) => node.id === 'end' ? { ...node, label: 'Earlier end' } : node),
+      edges: definition.edges,
+      generationMetadata: definition.generationMetadata,
+    };
+    const rootHash = calculateDefinitionHash(olderGraph);
+    const originalHash = rev.definitionHash;
+    rev.definitionHash = rootHash;
+    const fingerprint = diagnoseLegacyRootFingerprint(rev, olderGraph);
+    expect(fingerprint.legacyRootPresent).toBe(true);
+    expect(fingerprint.rootGraphMatchesRevision).toBe(false);
+    expect(fingerprint.rootGraphChangePaths).toContain('nodes[1].label');
+    expect(fingerprint.rootMetadataCurrentHashMatches).toBe(true);
+    expect(JSON.stringify(fingerprint)).not.toContain('Earlier end');
+    rev.definitionHash = originalHash;
+  });
+
 });
