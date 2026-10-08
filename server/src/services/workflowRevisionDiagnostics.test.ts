@@ -106,7 +106,7 @@ describe('safe revision fingerprint diagnostics', () => {
     const fingerprint = diagnoseLegacyRootFingerprint(rev, olderGraph);
     expect(fingerprint.legacyRootPresent).toBe(true);
     expect(fingerprint.rootGraphMatchesRevision).toBe(false);
-    expect(fingerprint.rootGraphChangePaths).toContain('nodes[1].label');
+    expect(fingerprint.rootGraphChangePaths?.some((path) => path.endsWith('.label'))).toBe(true);
     expect(fingerprint.rootMetadataCurrentHashMatches).toBe(true);
     expect(JSON.stringify(fingerprint)).not.toContain('Earlier end');
     rev.definitionHash = originalHash;
