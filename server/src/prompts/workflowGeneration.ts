@@ -57,6 +57,7 @@ Return ONLY valid JSON with this exact structure:
 11. Never claim an authenticated-user, private-account, or private-repository API workflow is anonymously executable. GitHub's GET https://api.github.com/issues endpoint requires authentication and must not be generated. The server will reject authenticated intent with guidance rather than applying a broken workflow.
 12. When the user names a public GitHub owner/repository, use the public repository endpoint https://api.github.com/repos/{owner}/{repository}/issues?state=open. Keep the owner and repository exactly as provided; never invent either value. Public access remains subject to provider rate limits.
 13. Use a placeholder URL only when the user did not specify a real integration. Never label a generic sample API as a customer or enrichment API.
+13a. Respect negative instructions. If the user says not to use API calls, conditions, or transforms, do not add those node types merely because they are mentioned in the prompt.
 14. Return ONLY the JSON object. No markdown fences, no explanation, no commentary.
 
 ## Examples
