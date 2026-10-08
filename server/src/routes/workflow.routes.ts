@@ -46,6 +46,12 @@ router.get(
   controller.getWorkflowRevision,
 );
 
+// GET    /api/workflows/:id/revision-integrity-diagnostics → Read-only owner-scoped diagnostic
+router.get(
+  '/:id/revision-integrity-diagnostics',
+  controller.getRevisionIntegrityDiagnostics,
+);
+
 // GET    /api/workflows/:id/ai-prompt-context → Resolve current definition AI lineage
 router.get(
   '/:id/ai-prompt-context',

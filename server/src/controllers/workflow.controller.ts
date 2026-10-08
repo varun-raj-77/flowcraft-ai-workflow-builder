@@ -1,6 +1,7 @@
 import { type Request, type Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import * as workflowService from '../services/workflow.service';
+import { getOwnedRevisionIntegrityDiagnostics } from '../services/revisionDiagnostics.service';
 
 // ── POST /api/workflows ─────────────────────────────────────
 
@@ -21,6 +22,12 @@ export const listWorkflows = asyncHandler(async (req: Request, res: Response) =>
 export const getWorkflow = asyncHandler(async (req: Request, res: Response) => {
   const workflow = await workflowService.getWorkflowById(req.params.id, req.userId!);
   res.json({ data: workflow });
+});
+
+// ── GET /api/workflows/:id/revision-integrity-diagnostics ──
+export const getRevisionIntegrityDiagnostics = asyncHandler(async (req: Request, res: Response) => {
+  const report = await getOwnedRevisionIntegrityDiagnostics(req.params.id, req.userId!);
+  res.json({ data: report });
 });
 
 // ── GET /api/workflows/:id/ai-prompt-context ───────────────
