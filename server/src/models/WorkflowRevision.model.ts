@@ -82,6 +82,9 @@ const workflowRevisionSchema = new Schema<IWorkflowRevisionDocument>(
   {
     timestamps: { createdAt: true, updatedAt: false },
     versionKey: false,
+    // Empty nested config objects are part of canonical workflow definitions.
+    // Preserve them when persisting Mixed nodes to avoid hash drift.
+    minimize: false,
     toJSON: {
       transform(_doc, ret) {
         const output = ret as unknown as Record<string, unknown>;
