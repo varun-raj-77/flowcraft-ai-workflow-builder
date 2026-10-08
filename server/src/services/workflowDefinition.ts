@@ -42,6 +42,18 @@ function toLogicalObject(value: unknown): Record<string, unknown> {
   return converted as Record<string, unknown>;
 }
 
+/**
+ * Mongoose may instantiate an empty nested capabilityCoverage path with four
+ * default [] arrays even when older AI metadata never contained coverage.
+ * That synthetic value is not part of the original hashed definition.
+ */
+function isImplicitEmptyCoverage(value: Record<string, unknown>): boolean {
+  return value.coverage === undefined
+    && value.isComplete === undefined
+    && ['requestedCapabilities', 'implementedCapabilities', 'missingCapabilities', 'unsupportedCapabilities']
+      .every((key) => value[key] === undefined || (Array.isArray(value[key]) && value[key].length === 0));
+}
+
 /** Convert metadata into its persisted logical shape, excluding ODM document internals. */
 export function normalizeWorkflowGenerationMetadata(
   metadata: unknown,
@@ -49,9 +61,12 @@ export function normalizeWorkflowGenerationMetadata(
   if (metadata === undefined || metadata === null) return undefined;
 
   const value = toLogicalObject(metadata);
-  const capabilityCoverage = value.capabilityCoverage === undefined
+  const storedCoverage = value.capabilityCoverage === undefined
     ? undefined
     : toLogicalObject(value.capabilityCoverage);
+  const capabilityCoverage = storedCoverage && !isImplicitEmptyCoverage(storedCoverage)
+    ? storedCoverage
+    : undefined;
 
   return {
     originalPrompt: value.originalPrompt as string,
