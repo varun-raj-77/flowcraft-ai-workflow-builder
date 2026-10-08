@@ -16,6 +16,28 @@ describe('AI capability coverage', () => {
     expect(coverage.missingCapabilities).toContain('qualification_condition');
   });
 
+  it('ignores explicitly excluded capabilities in the interview demo prompt', () => {
+    const prompt = "Create a workflow with four nodes connected in order: Start, Delay, Output, End. Configure Delay to wait 1000 milliseconds. Configure Output to log the message 'FlowCraft demo successful' at info level. Do not use external APIs, authentication, transformations, or condition branches.";
+    expect(identifyRequestedCapabilities(prompt)).toEqual(['delay', 'output']);
+    const coverage = assessCapabilityCoverage(prompt, {
+      nodes: [
+        start,
+        { id: 'delay', type: 'delay', label: 'Delay', config: { delayMs: 1000 } },
+        { id: 'output', type: 'output', label: 'Log', config: { logLevel: 'info', message: 'FlowCraft demo successful' } },
+        end,
+      ],
+      edges: [{ source: 'start', target: 'delay' }, { source: 'delay', target: 'output' }, { source: 'output', target: 'end' }],
+    });
+    expect(coverage.isComplete).toBe(true);
+    expect(coverage.missingCapabilities).toEqual([]);
+  });
+
+  it('retains affirmative instructions after contrasted prohibitions', () => {
+    expect(identifyRequestedCapabilities('Do not call an API or add a condition; instead, wait 1 second and log the result')).toEqual(['delay', 'output']);
+    expect(identifyRequestedCapabilities('Fetch data but do not transform it. Log the result')).toEqual(['api_call', 'output']);
+    expect(identifyRequestedCapabilities('Create a workflow without condition branches or API calls. Wait one second, then output the result')).toEqual(['delay', 'output']);
+  });
+
   it('marks executable AI summaries as unsupported', () => {
     const coverage = assessCapabilityCoverage('Fetch data and generate an AI summary', { nodes: [start, { id: 'api', type: 'api_call', label: 'Fetch data', config: {} }, { id: 'out', type: 'output', label: 'Log summary', config: {} }, end], edges: [{ source: 'start', target: 'api' }, { source: 'api', target: 'out' }, { source: 'out', target: 'end' }] });
     expect(coverage.unsupportedCapabilities).toContain('ai_summary');
