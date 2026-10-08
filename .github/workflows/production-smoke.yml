@@ -1,5 +1,5 @@
 name: Production smoke (disposable demo workflow)
-# PR probe: print only changed canonical graph field paths for legacy v1 migration mismatches.
+# PR probe: inspect field paths after current production deploy completed.
 
 on:
   pull_request:
