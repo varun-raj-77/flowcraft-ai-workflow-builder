@@ -154,7 +154,7 @@ interface WorkflowState {
   redo: () => void;
   updateNodeData: (nodeId: string, data: Partial<FlowNodeData>) => void;
   updateMeta: (updates: Partial<WorkflowMeta>) => void;
-  applyGeneratedWorkflow: (workflow: Pick<Workflow, 'name' | 'description' | 'nodes' | 'edges' | 'generationMetadata'>) => void;
+  applyGeneratedWorkflow: (workflow: Pick<Workflow, 'name' | 'description' | 'nodes' | 'edges' | 'generationMetadata'>, asNewDraft?: boolean) => void;
   markClean: () => void;
   setDirty: () => void;
 
@@ -348,9 +348,19 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       return JSON.stringify(meta) === JSON.stringify(state.meta) ? state : commitSnapshot(state, { nodes: state.nodes, edges: state.edges, meta });
     }),
 
-  applyGeneratedWorkflow: (workflow) =>
+  applyGeneratedWorkflow: (workflow, asNewDraft = false) =>
     set((state) => {
       if (!hasCompleteGenerationMetadata(workflow.generationMetadata)) return state;
+      if (asNewDraft) {
+        // New AI drafts must never inherit the previous workflow's database identity,
+        // revision pointer, or undo history across editor navigation.
+        const draft: WorkflowSnapshot = {
+          nodes: workflow.nodes.map(toFlowNode),
+          edges: workflow.edges.map(toFlowEdge),
+          meta: { _id: '', name: workflow.name, description: workflow.description, isGeneratedByAI: true, generationMetadata: workflow.generationMetadata },
+        };
+        return { ...draft, isDirty: true, undoStack: [], redoStack: [], savedSnapshot: emptySnapshot(), dragSnapshot: null };
+      }
       return commitSnapshot(state, {
         nodes: workflow.nodes.map(toFlowNode),
         edges: workflow.edges.map(toFlowEdge),
