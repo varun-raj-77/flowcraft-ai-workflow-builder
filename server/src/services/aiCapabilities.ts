@@ -46,8 +46,19 @@ function addIf(matches: Set<AICapability>, condition: boolean, capability: AICap
   if (condition) matches.add(capability);
 }
 
+/**
+ * Requirements must come from affirmative instructions. A capability mentioned
+ * only in an exclusion (e.g. "do not use condition branches") is not requested.
+ */
+function affirmativeIntent(prompt: string): string {
+  return prompt.toLowerCase().replace(
+    /\b(?:do\s+not|don't|dont|never|without|avoid|exclude|omit|skip|no)\b(?:(?![.!?;\n]|\b(?:but|instead|however|then)\b)[\s\S])*/g,
+    ' ',
+  );
+}
+
 export function identifyRequestedCapabilities(prompt: string): AICapability[] {
-  const text = prompt.toLowerCase();
+  const text = affirmativeIntent(prompt);
   const requested = new Set<AICapability>();
 
   addIf(requested, /\b(fetch|call|request|api|enrich|enrichment)\b/.test(text), 'api_call');
@@ -94,7 +105,7 @@ function hasRequestedOrder(workflow: GeneratedWorkflowShape, requested: AICapabi
 export function assessCapabilityCoverage(prompt: string, workflow: GeneratedWorkflowShape): CapabilityCoverage {
   const requestedCapabilities = identifyRequestedCapabilities(prompt);
   const implemented = new Set<AICapability>();
-  const text = prompt.toLowerCase();
+  const text = affirmativeIntent(prompt);
   const nodes = workflow.nodes;
 
   if (nodes.some((node) => node.type === 'api_call') && (!/enrich|customer/.test(text) || nodes.some((node) => node.type === 'api_call' && containsPurpose(node, /enrich|customer/)))) implemented.add('api_call');
