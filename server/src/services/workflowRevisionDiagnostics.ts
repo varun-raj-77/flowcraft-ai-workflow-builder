@@ -73,12 +73,22 @@ function candidateMatches(revision: RevisionData, definition: WorkflowDefinition
   return matches;
 }
 
+export interface RevisionIntegrityDiagnostic {
+  revision: number;
+  source: string;
+  graphValid: boolean;
+  metadataPresent: boolean;
+  metadataCoveragePresent?: boolean;
+  matches: Record<string, boolean>;
+  status: 'valid' | 'hash_mismatch' | 'structural_validation_failed' | 'metadata_normalization_failed';
+}
+
 /**
  * Owner-scoped, read-only diagnostic: returns no graph, prompt, hash,
  * credentials, or secrets. A matching alternative is diagnostic evidence,
  * not authorization to rewrite an immutable revision.
  */
-export function diagnoseRevisionIntegrity(revision: RevisionData) {
+export function diagnoseRevisionIntegrity(revision: RevisionData): RevisionIntegrityDiagnostic {
   let graph: ReturnType<typeof normalizeAndValidateWorkflowGraph>;
   try {
     graph = normalizeAndValidateWorkflowGraph(revision.nodes, revision.edges);
