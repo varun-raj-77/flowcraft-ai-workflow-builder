@@ -14,10 +14,10 @@ import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
 import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 
 const EXAMPLE_PROMPTS = [
-  'Fetch users from an API, filter active users, and log the count',
-  'Call a weather API, check if temperature is above 30°C, send an alert if yes',
-  'Load data from two endpoints, transform and merge the results, then output a summary',
-  'Fetch order data, wait 2 seconds, then log the total revenue',
+  "Start the workflow, wait 1000 milliseconds, log the message 'FlowCraft demo successful' at info level, then end the workflow.",
+  "Start the workflow, use a JavaScript Transform node to calculate the sum of the numbers [10, 20, 30], log the sum with an Output node, then end the workflow.",
+  "Start the workflow, check the condition 10 > 5, log 'Check passed' on the true branch or 'Check failed' on the false branch, then end the workflow.",
+  "Start the workflow, fetch public posts from https://jsonplaceholder.typicode.com/posts using a GET API Call with no authentication, log the HTTP response status, then end the workflow.",
 ];
 
 type PromptContextState =
