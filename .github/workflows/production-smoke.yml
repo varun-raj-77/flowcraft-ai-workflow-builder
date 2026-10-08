@@ -1,0 +1,28 @@
+name: Production smoke (disposable demo workflow)
+# Extended production smoke: authentication, graph branches, transforms and API headers.
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/production-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check live production app
+        env:
+          FLOWCRAFT_BASE_URL: https://flowcraft-ai-workflow-builder.vercel.app
+          FLOWCRAFT_SMOKE_EMAIL: demo@flowcraft.app
+          # Only the already-public, unprivileged demo credentials from README.
+          FLOWCRAFT_SMOKE_PASSWORD: demo123
+        run: node .github/scripts/production-smoke.mjs
