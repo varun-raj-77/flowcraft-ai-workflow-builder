@@ -158,6 +158,37 @@ async function main() {
     });
   }
 
+  await attempt('persist API node with empty headers', async () => {
+    const suffix = String(Date.now());
+    const apiGraph = {
+      nodes: [
+        { id: 'start', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} },
+        { id: 'api', type: 'api_call', label: 'Public API', position: { x: 220, y: 0 },
+          config: { url: 'https://jsonplaceholder.typicode.com/posts', method: 'GET', headers: {} } },
+        { id: 'end', type: 'end', label: 'End', position: { x: 440, y: 0 }, config: {} },
+      ],
+      edges: [
+        { id: 'start-api', source: 'start', target: 'api' },
+        { id: 'api-end', source: 'api', target: 'end' },
+      ],
+    };
+    const created = requireStatus(await api('/api/workflows', 'POST', {
+      name: '__flowcraft_api_smoke_' + suffix,
+      description: 'Disposable empty API headers test; never execute',
+      ...apiGraph,
+      isGeneratedByAI: false,
+    }), 201, 'create API workflow');
+    if (!created?._id) throw new Error('API workflow ID missing');
+    ownedWorkflowIds.push(created._id);
+    const loaded = requireStatus(await api('/api/workflows/' + created._id), 200, 'reload API workflow');
+    const config = loaded.nodes?.find((n) => n.id === 'api')?.config;
+    if (!config || !Object.prototype.hasOwnProperty.call(config, 'headers')) {
+      throw new Error('Empty API headers field disappeared during persistence');
+    }
+    if (Object.keys(config.headers).length !== 0) throw new Error('Unexpected API header values');
+    return 'API revision hash stable and empty headers retained';
+  });
+
   // A single inexpensive AI generation probe. Never execute untrusted generated
   // graphs on the shared demo account.
   await attempt('live AI generation with simple supported prompt', async () => {
