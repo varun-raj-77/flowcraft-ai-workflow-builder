@@ -1,5 +1,5 @@
 name: Production smoke (disposable demo workflow)
-# PR probe: bounded read-only checks of all existing demo workflows.
+# PR probe: read-only integrity fingerprints of all demo workflows.
 
 on:
   pull_request:
