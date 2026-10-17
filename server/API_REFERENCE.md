@@ -42,6 +42,7 @@ Success responses use `{ "data": ... }`, except `GET /health` and successful `DE
 | `POST` | `/ai/generate` | 200 | Generate and validate an unpersisted candidate |
 | `POST` | `/ai/workflows/:workflowId/regenerate` | 201 | Generate and atomically persist an AI revision |
 | `POST` | `/executions/:workflowId/run` | 201 | Pin the current revision and start execution |
+| `POST` | `/executions/:workflowId/simulate` | 200 | Verify current revision and simulate with explicit mocks only |
 | `GET` | `/executions/run/:runId` | 200 | Read one owned execution |
 | `GET` | `/executions/run/:runId/provenance` | 200 | Resolve exact definition provenance |
 | `GET` | `/executions/workflow/:workflowId` | 200 | List the 20 newest owned runs |
@@ -281,6 +282,10 @@ Ownership and the starting revision are checked before the provider call and che
 No body. In one transaction, the server resolves and validates the owned current revision, verifies its canonical hash, guards the root pointer, and creates an execution record pinned by `workflowRevisionId`, `workflowRevision`, and `definitionHash`. It returns the pending run with status 201, then processes the pinned definition asynchronously and emits authorized Socket.IO events.
 
 Empty graphs return `400 EMPTY_WORKFLOW`. Legacy roots and broken pointers fail closed; the engine never falls back to root graph fields.
+
+### POST /api/executions/:workflowId/simulate
+
+Use `expectedRevision`, per-node `mocks`, optional `assertions`, and optional `expectedBranches`. The response provides `status`, individual node steps, assertion results, and revision provenance. Only mocked API, Transform, and Condition outputs are used; arbitrary JavaScript and HTTP calls never run. No database records are created or altered. See [Test Lab documentation](../docs/test-lab-simulation.md) for a full request, safety constraints, and supported scope.
 
 ### GET /api/executions/run/:runId
 
