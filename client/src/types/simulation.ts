@@ -41,6 +41,22 @@ export interface SimulationResult {
   provenance: { workflowRevision: number; definitionHash: string };
 }
 
+export interface SimulationDiagnosticFinding {
+  nodeId: string;
+  action: 'add_mock' | 'inspect_fixture' | 'review_assertion' | 'review_branch' | 'inspect_workflow';
+  explanation: string;
+  suggestedNextStep: string;
+  confidence: 'low' | 'medium';
+}
+
+export interface SimulationDiagnosis {
+  provider: 'anthropic';
+  model: string;
+  provenance: { workflowRevision: number; definitionHash: string };
+  findings: SimulationDiagnosticFinding[];
+  disclaimer: string;
+}
+
 export interface TestLabAssertionDraft {
   id: string;
   nodeId: string;
