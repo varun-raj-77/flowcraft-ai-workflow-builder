@@ -68,7 +68,12 @@ function isolatedWorkerMain() {
             ? error.message : String(error);
           const stack = error && typeof error === 'object' && typeof error.stack === 'string'
             ? error.stack : undefined;
-          report({ ok: false, guestError: true, unsupportedAsync: message === 'Async scripts are not supported.', message: message.slice(0, 500), stack: stack?.slice(0, 2000) });
+          // QuickJS interruption/memory faults are resource failures, not user
+          // expression errors. They must STOP the workflow, never select false.
+          const interrupted = /^(?:interrupted|out of memory|stack overflow)$/i.test(message.trim());
+          report({ ok: false, guestError: !interrupted, limit: interrupted,
+            unsupportedAsync: message === 'Async scripts are not supported.',
+            message: message.slice(0, 500), stack: stack?.slice(0, 2000) });
         } finally {
           result.error.dispose();
         }
