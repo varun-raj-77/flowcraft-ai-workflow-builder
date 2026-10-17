@@ -14,6 +14,7 @@ export interface SimulationAssertionInput {
 
 export interface SimulationScenario {
   expectedRevision: number;
+  mode?: 'mock' | 'isolated';
   mocks: Record<string, Record<string, unknown>>;
   assertions: SimulationAssertionInput[];
   expectedBranches: Record<string, 'true' | 'false'>;
@@ -35,6 +36,7 @@ export interface SimulationAssertionResult {
 }
 
 export interface SimulationResult {
+  mode?: 'mock' | 'isolated';
   status: 'passed' | 'failed';
   steps: SimulationStep[];
   assertions: SimulationAssertionResult[];
