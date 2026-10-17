@@ -33,6 +33,7 @@ The project focuses on engineering problems that go beyond a traditional CRUD ap
 - deterministic DAG execution
 - real-time execution streaming
 - visual Test Lab with mock API/Transform outputs, simulated condition branches, and expected-output checks (no external side effects)
+- opt-in, read-only AI diagnosis for failed simulation checks using sanitized failure categories, never raw fixtures or workflow code
 - AI output validation
 - user-scoped authentication and persistence
 - immutable revision history, semantic comparison, and safe restore
@@ -421,6 +422,7 @@ TRUSTED_ORIGINS=https://your-frontend.example.com
 | `GET` | `/api/executions/run/:runId/provenance` | Inspect exact execution revision provenance |
 | `POST` | `/api/ai/generate` | Generate and validate a workflow |
 | `POST` | `/api/ai/workflows/:id/regenerate` | Generate and atomically persist a new AI revision |
+| `POST` | `/api/ai/workflows/:id/diagnose-simulation` | Suggest review-only fixes for failing mocked tests |
 
 ## Demo Workspace Safety
 

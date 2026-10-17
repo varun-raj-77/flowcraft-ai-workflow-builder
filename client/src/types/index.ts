@@ -30,7 +30,7 @@ export type {
   WorkflowRevisionComparison,
 } from './workflow';
 
-export type { SimulationNode, SimulationScenario, SimulationStep, SimulationAssertionInput, SimulationAssertionResult, SimulationResult, TestLabAssertionDraft } from './simulation';
+export type { SimulationNode, SimulationScenario, SimulationStep, SimulationAssertionInput, SimulationAssertionResult, SimulationResult, SimulationDiagnosis, SimulationDiagnosticFinding, TestLabAssertionDraft } from './simulation';
 
 export type {
   ExecutionStatus,

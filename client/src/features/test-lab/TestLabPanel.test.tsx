@@ -130,4 +130,70 @@ describe('Test Lab visual workflow', () => {
     expect(useUIStore.getState().selectedNodeId).toBe('transform');
     expect(useWorkflowStore.getState().isDirty).toBe(false);
   });
+
+  it('requests AI explanation only after a failed pinned simulation and renders advice without edits', async () => {
+    const failed: SimulationResult = {
+      ...fakeResult,
+      status: 'failed',
+      assertions: [{ nodeId: 'fetch', path: 'status', passed: false, message: 'Expected value did not match' }],
+    };
+    const simulate = vi.spyOn(api, 'simulateWorkflow').mockResolvedValue(failed);
+    const diagnose = vi.spyOn(api, 'diagnoseSimulation').mockResolvedValue({
+      provider: 'anthropic',
+      model: 'test-haiku',
+      provenance: failed.provenance,
+      findings: [{
+        nodeId: 'fetch',
+        action: 'review_assertion',
+        explanation: 'The assertion did not match the mocked HTTP status.',
+        suggestedNextStep: 'Inspect the expected status and compare it with the fixture.',
+        confidence: 'medium',
+      }],
+      disclaimer: 'Advisory only. No real workflow code ran.',
+    });
+    render(<TestLabPanel />);
+    expect(screen.queryByRole('button', { name: 'Explain failure' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Run simulation' }));
+    expect(await screen.findByText('Simulation failed')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Explain failure' }));
+    await waitFor(() => expect(diagnose).toHaveBeenCalledTimes(1));
+    expect(diagnose.mock.calls[0]).toEqual(simulate.mock.calls[0]);
+    expect(await screen.findByText('The assertion did not match the mocked HTTP status.')).toBeTruthy();
+    expect(screen.getByText(/Inspect the expected status/)).toBeTruthy();
+    expect(screen.getByText(/Advisory only/)).toBeTruthy();
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+  });
+
+  it('never calls the provider on a passing test and shows provider errors on failures', async () => {
+    const diagnose = vi.spyOn(api, 'diagnoseSimulation');
+    vi.spyOn(api, 'simulateWorkflow').mockResolvedValueOnce(fakeResult).mockResolvedValueOnce({
+      ...fakeResult,
+      status: 'failed',
+      assertions: [{ nodeId: 'fetch', passed: false, message: 'Expected value did not match' }],
+    });
+    diagnose.mockRejectedValue(new api.ApiError(503, 'AI_UNAVAILABLE', 'AI diagnosis is temporarily unavailable.'));
+    render(<TestLabPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Run simulation' }));
+    expect(await screen.findByText('Simulation passed')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Explain failure' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Run simulation' }));
+    expect(await screen.findByText('Simulation failed')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Explain failure' }));
+    expect(await screen.findByText(/AI diagnosis is temporarily unavailable/)).toBeTruthy();
+    expect(diagnose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show AI advice after a fixture changes and the simulation is invalidated', async () => {
+    const failed: SimulationResult = { ...fakeResult, status: 'failed',
+      assertions: [{ nodeId: 'fetch', passed: false, message: 'Mismatch' }] };
+    vi.spyOn(api, 'simulateWorkflow').mockResolvedValue(failed);
+    const diagnose = vi.spyOn(api, 'diagnoseSimulation');
+    render(<TestLabPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Run simulation' }));
+    expect(await screen.findByText('Simulation failed')).toBeTruthy();
+    const fixtures = screen.getAllByLabelText('Mock output (JSON object)', { selector: 'textarea', exact: true });
+    fireEvent.change(fixtures[0], { target: { value: '{"status":201,"data":[]}' } });
+    expect(screen.queryByRole('button', { name: 'Explain failure' })).toBeNull();
+    expect(diagnose).not.toHaveBeenCalled();
+  });
 });

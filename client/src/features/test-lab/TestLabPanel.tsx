@@ -8,7 +8,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
 import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
-import type { SimulationNode, SimulationResult, TestLabAssertionDraft } from '@/types/simulation';
+import type { SimulationDiagnosis, SimulationNode, SimulationResult, SimulationScenario, TestLabAssertionDraft } from '@/types/simulation';
 import { buildSimulationScenario, initialConditionBranches, initialSimulationFixtures } from './simulationScenario';
 
 const control = 'fc-control w-full rounded-lg px-3 py-2 text-xs text-[var(--text-primary)]';
@@ -37,10 +37,15 @@ export function TestLabPanel() {
   const [assertions, setAssertions] = useState<TestLabAssertionDraft[]>([]);
   const nextId = useRef(0);
   const busy = useRef(false);
+  const diagnosisBusy = useRef(false);
+  const lastScenarioRef = useRef<SimulationScenario | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [error, setError] = useState('');
-  const panelRef = useModalDialog({ isOpen, onClose: close, canClose: !running, initialFocusRef: closeButtonRef });
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<SimulationDiagnosis | null>(null);
+  const [diagnosisError, setDiagnosisError] = useState('');
+  const panelRef = useModalDialog({ isOpen, onClose: close, canClose: !running && !diagnosing, initialFocusRef: closeButtonRef });
 
   // New revisions get new fixtures; unsaved changes are never silently simulated.
   useEffect(() => {
@@ -50,6 +55,9 @@ export function TestLabPanel() {
     setAssertions([]);
     setResult(null);
     setError('');
+    setDiagnosis(null);
+    setDiagnosisError('');
+    lastScenarioRef.current = null;
     // Reset only on saved revision/identity change, not every graph edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowId, revision]);
@@ -64,11 +72,14 @@ export function TestLabPanel() {
         : '';
 
   const run = async () => {
-    if (blocked || busy.current) return;
+    if (blocked || busy.current || diagnosisBusy.current) return;
     busy.current = true;
     setRunning(true);
     setError('');
     setResult(null);
+    setDiagnosis(null);
+    setDiagnosisError('');
+    lastScenarioRef.current = null;
     try {
       const scenario = buildSimulationScenario({
         revision, nodes: simNodes, fixtures, conditionBranches: branches, expectedBranches, assertions,
@@ -81,6 +92,7 @@ export function TestLabPanel() {
       } else if (response.provenance.workflowRevision !== revision) {
         setError('The simulation referenced a different workflow revision. Refresh and retry.');
       } else {
+        lastScenarioRef.current = scenario;
         setResult(response);
       }
     } catch (caught) {
@@ -91,15 +103,48 @@ export function TestLabPanel() {
     }
   };
 
+  const diagnose = async () => {
+    if (blocked || busy.current || diagnosisBusy.current || result?.status !== 'failed' || !lastScenarioRef.current) return;
+    diagnosisBusy.current = true;
+    setDiagnosing(true);
+    setDiagnosis(null);
+    setDiagnosisError('');
+    const original = lastScenarioRef.current;
+    try {
+      const advice = await api.diagnoseSimulation(workflowId, original);
+      const current = useWorkflowStore.getState();
+      if (current.meta?._id !== workflowId || current.meta?.currentRevision !== revision || current.isDirty
+        || useRevisionHistoryStore.getState().previewRevision || useRevisionComparisonStore.getState().comparison) {
+        setDiagnosisError('The workflow changed during diagnosis. Save and rerun the Test Lab.');
+      } else if (advice.provenance.workflowRevision !== revision || advice.provenance.definitionHash !== result.provenance.definitionHash) {
+        setDiagnosisError('The diagnosed revision did not match this simulation. Refresh and retry.');
+      } else {
+        setDiagnosis(advice);
+      }
+    } catch (caught) {
+      setDiagnosisError(api.getApiErrorMessage(caught, caught instanceof Error ? caught.message : 'AI diagnosis failed.'));
+    } finally {
+      diagnosisBusy.current = false;
+      setDiagnosing(false);
+    }
+  };
+
+  const invalidateReport = () => {
+    lastScenarioRef.current = null;
+    setResult(null);
+    setDiagnosis(null);
+    setDiagnosisError('');
+  };
+
   const updateAssertion = (id: string, patch: Partial<TestLabAssertionDraft>) => {
     setAssertions((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item));
-    setResult(null);
+    invalidateReport();
   };
 
   if (!isOpen) return null;
 
   return <div className="fixed inset-0 z-50 flex justify-end bg-black/65 backdrop-blur-[2px]" onMouseDown={(event) => {
-    if (event.target === event.currentTarget && !running) close();
+    if (event.target === event.currentTarget && !running && !diagnosing) close();
   }}>
     <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Workflow Test Lab" tabIndex={-1}
       className="flex h-full w-full max-w-[580px] flex-col overflow-hidden border-l border-[var(--border-default)] bg-[var(--surface-shell)] shadow-2xl">
@@ -109,7 +154,7 @@ export function TestLabPanel() {
           <h2 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">Workflow Test Lab</h2>
           <p className="mt-1 text-xs text-[var(--text-muted)]">Test a saved revision without network calls, JavaScript execution, or side effects.</p>
         </div>
-        <button ref={closeButtonRef} type="button" aria-label="Close Test Lab" onClick={close} disabled={running}
+        <button ref={closeButtonRef} type="button" aria-label="Close Test Lab" onClick={close} disabled={running || diagnosing}
           className="fc-focus rounded-lg border border-[var(--border-faint)] px-2 py-1 text-lg text-[var(--text-secondary)]">×</button>
       </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
@@ -134,23 +179,23 @@ export function TestLabPanel() {
             {node.type === 'condition' ? <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor={'sim-branch-' + node.id} className={label}>Simulated branch</label>
-                <select id={'sim-branch-' + node.id} className={control} disabled={running} value={branches[node.id] ?? 'true'}
-                  onChange={(event) => { setBranches((prev) => ({ ...prev, [node.id]: event.target.value as 'true' | 'false' })); setResult(null); }}>
+                <select id={'sim-branch-' + node.id} className={control} disabled={running || diagnosing} value={branches[node.id] ?? 'true'}
+                  onChange={(event) => { setBranches((prev) => ({ ...prev, [node.id]: event.target.value as 'true' | 'false' })); invalidateReport(); }}>
                   <option value="true">True</option><option value="false">False</option>
                 </select>
               </div>
               <div>
                 <label htmlFor={'sim-expected-' + node.id} className={label}>Expected branch</label>
-                <select id={'sim-expected-' + node.id} className={control} disabled={running} value={expectedBranches[node.id] ?? ''}
-                  onChange={(event) => { setExpectedBranches((prev) => ({ ...prev, [node.id]: event.target.value as '' | 'true' | 'false' })); setResult(null); }}>
+                <select id={'sim-expected-' + node.id} className={control} disabled={running || diagnosing} value={expectedBranches[node.id] ?? ''}
+                  onChange={(event) => { setExpectedBranches((prev) => ({ ...prev, [node.id]: event.target.value as '' | 'true' | 'false' })); invalidateReport(); }}>
                   <option value="">No assertion</option><option value="true">True</option><option value="false">False</option>
                 </select>
               </div>
             </div> : <div>
               <label htmlFor={'sim-fixture-' + node.id} className={label}>Mock output (JSON object)</label>
-              <textarea id={'sim-fixture-' + node.id} rows={5} spellCheck={false} disabled={running} value={fixtures[node.id] ?? ''}
+              <textarea id={'sim-fixture-' + node.id} rows={5} spellCheck={false} disabled={running || diagnosing} value={fixtures[node.id] ?? ''}
                 className={control + ' resize-y font-mono leading-5'}
-                onChange={(event) => { setFixtures((prev) => ({ ...prev, [node.id]: event.target.value })); setResult(null); }}/>
+                onChange={(event) => { setFixtures((prev) => ({ ...prev, [node.id]: event.target.value })); invalidateReport(); }}/>
             </div>}
           </div>)}</div> : <p className="rounded-lg border border-dashed border-[var(--border-default)] p-3 text-xs text-[var(--text-muted)]">
             No mocks required. Start, Delay, Output and End nodes are simulated automatically.
@@ -163,11 +208,11 @@ export function TestLabPanel() {
               <h3 className="text-sm font-semibold text-[var(--text-primary)]">2. Check expected results</h3>
               <p className="mt-1 text-xs text-[var(--text-muted)]">Assertions compare fields to JSON values (e.g. 200, true, or &quot;ok&quot;).</p>
             </div>
-            <Button size="sm" variant="secondary" disabled={running || !simNodes.length || assertions.length >= 100}
+            <Button size="sm" variant="secondary" disabled={running || diagnosing || !simNodes.length || assertions.length >= 100}
               onClick={() => {
                 nextId.current += 1;
                 setAssertions((items) => [...items, { id: String(nextId.current), nodeId: simNodes[0].id, path: '', expectedJson: 'null' }]);
-                setResult(null);
+                invalidateReport();
               }}>+ Add</Button>
           </div>
           {assertions.length === 0 && <p className="rounded-lg border border-dashed border-[var(--border-default)] p-3 text-xs text-[var(--text-muted)]">No value assertions yet. Add a check to verify a node output.</p>}
@@ -175,25 +220,25 @@ export function TestLabPanel() {
             className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-3">
             <div className="mb-3 flex items-center justify-between">
               <strong className="text-xs text-[var(--text-primary)]">Assertion {index + 1}</strong>
-              <button type="button" disabled={running} className="fc-focus rounded px-2 py-1 text-xs text-red-300"
-                onClick={() => { setAssertions((items) => items.filter((item) => item.id !== check.id)); setResult(null); }}>Remove</button>
+              <button type="button" disabled={running || diagnosing} className="fc-focus rounded px-2 py-1 text-xs text-red-300"
+                onClick={() => { setAssertions((items) => items.filter((item) => item.id !== check.id)); invalidateReport(); }}>Remove</button>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={label} htmlFor={'sim-node-' + check.id}>Node</label>
-                <select id={'sim-node-' + check.id} className={control} disabled={running} value={check.nodeId}
+                <select id={'sim-node-' + check.id} className={control} disabled={running || diagnosing} value={check.nodeId}
                   onChange={(event) => updateAssertion(check.id, { nodeId: event.target.value })}>
                   {simNodes.map((node) => <option value={node.id} key={node.id}>{node.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className={label} htmlFor={'sim-path-' + check.id}>Output field (optional)</label>
-                <input id={'sim-path-' + check.id} className={control} disabled={running} placeholder="e.g. status" value={check.path}
+                <input id={'sim-path-' + check.id} className={control} disabled={running || diagnosing} placeholder="e.g. status" value={check.path}
                   onChange={(event) => updateAssertion(check.id, { path: event.target.value })}/>
               </div>
             </div>
             <label className={label + ' mt-3'} htmlFor={'sim-value-' + check.id}>Expected JSON value</label>
-            <input id={'sim-value-' + check.id} className={control + ' font-mono'} disabled={running} value={check.expectedJson}
+            <input id={'sim-value-' + check.id} className={control + ' font-mono'} disabled={running || diagnosing} value={check.expectedJson}
               onChange={(event) => updateAssertion(check.id, { expectedJson: event.target.value })}/>
           </div>)}</div>
         </section>
@@ -226,6 +271,33 @@ export function TestLabPanel() {
                 </span>
               </li>)}</ol>
             </div>
+            {result.status === 'failed' && <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-3" aria-label="AI failure diagnosis">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-semibold text-violet-200">AI-assisted diagnosis</h4>
+                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">Ask AI to explain failing mocks or assertions. Advice only; no workflow changes.</p>
+                </div>
+                <Button size="sm" variant="secondary" isLoading={diagnosing} disabled={blocked || running}
+                  onClick={() => { void diagnose(); }}>{diagnosing ? 'Analyzing…' : diagnosis ? 'Diagnose again' : 'Explain failure'}</Button>
+              </div>
+              {diagnosisError && <p role="alert" className="mt-3 text-xs text-red-300">{diagnosisError}</p>}
+              {diagnosis && <div className="mt-3 space-y-3" aria-label="AI suggestions">
+                <p className="text-[11px] text-[var(--text-muted)]">Suggested investigation steps · {diagnosis.provider} · {diagnosis.model}</p>
+                <ol className="space-y-2">{diagnosis.findings.map((finding, index) => <li key={finding.nodeId + index}
+                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <button type="button" onClick={() => { close(); selectNode(finding.nodeId); }}
+                      className="fc-focus truncate text-left text-xs font-semibold text-[var(--text-primary)] hover:underline">
+                      {simNodes.find((node) => node.id === finding.nodeId)?.label ?? finding.nodeId}
+                    </button>
+                    <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{finding.action.replaceAll('_', ' ')} · {finding.confidence} confidence</span>
+                  </div>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">{finding.explanation}</p>
+                  <p className="mt-1.5 text-xs text-violet-200">{finding.suggestedNextStep}</p>
+                </li>)}</ol>
+                <p className="border-t border-[var(--border-faint)] pt-3 text-[11px] text-amber-200">{diagnosis.disclaimer}</p>
+              </div>}
+            </div>}
             {result.assertions.length > 0 && <div>
               <h4 className="mb-2 text-xs font-semibold text-[var(--text-secondary)]">Assertions</h4>
               <ul className="space-y-1.5">{result.assertions.map((check, index) => <li key={check.nodeId + (check.path ?? '') + index}
@@ -244,7 +316,7 @@ export function TestLabPanel() {
           <p className="text-xs font-semibold text-[var(--text-primary)]">Simulation only</p>
           <p className="text-[10px] text-[var(--text-muted)]">No HTTP requests to your API nodes or persisted test runs</p>
         </div>
-        <Button disabled={blocked || !simNodes.length} isLoading={running} onClick={() => { void run(); }}>
+        <Button disabled={blocked || diagnosing || !simNodes.length} isLoading={running} onClick={() => { void run(); }}>
           {running ? 'Simulating…' : 'Run simulation'}
         </Button>
       </div>
