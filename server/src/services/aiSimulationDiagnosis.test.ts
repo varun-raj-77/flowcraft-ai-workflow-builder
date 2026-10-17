@@ -134,4 +134,14 @@ describe('AI-assisted simulation failure diagnosis', () => {
     expect(JSON.stringify(findings)).not.toContain('invented-secret');
     expect(JSON.stringify(findings)).not.toContain('fictional-secret');
   });
+
+  it('rejects isolated-mode AI requests before accessing the workflow or provider', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(diagnoseOwnedSimulation('workflow-1', 'owner-1', {
+      ...scenario, mode: 'isolated',
+    })).rejects.toMatchObject({ statusCode: 409, code: 'SIMULATION_DIAGNOSIS_MODE_UNSUPPORTED' });
+    expect(mocks.simulate).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
