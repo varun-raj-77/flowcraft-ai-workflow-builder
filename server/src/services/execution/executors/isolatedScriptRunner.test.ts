@@ -116,7 +116,7 @@ describe('isolated WebAssembly JavaScript execution', () => {
   it('rejects Promise and undefined returns rather than silently recording success', async () => {
     const inputs = { input: {}, prev: {}, nodes: {} };
     await expect(executeIsolatedScript('transform', 'return Promise.resolve({ ok: true });', inputs))
-      .rejects.toMatchObject({ code: 'SCRIPT_GUEST_ERROR' });
+      .rejects.toMatchObject({ code: 'SCRIPT_REJECTED' });
     await expect(executeIsolatedScript('transform', 'return undefined;', inputs))
       .rejects.toMatchObject({ code: 'SCRIPT_GUEST_ERROR' });
   }, 12_000);
