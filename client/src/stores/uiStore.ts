@@ -7,6 +7,7 @@ interface UIState {
   isExecutionPanelOpen: boolean;
   isExecutionInspectorMaximized: boolean;
   isAIModalOpen: boolean;
+  isTestLabOpen: boolean;
   undoToast: string | null;
 
   // Actions
@@ -17,6 +18,8 @@ interface UIState {
   restoreExecutionInspector: () => void;
   openAIModal: () => void;
   closeAIModal: () => void;
+  openTestLab: () => void;
+  closeTestLab: () => void;
   showUndoToast: (message: string) => void;
   clearUndoToast: () => void;
 }
@@ -27,6 +30,7 @@ export const useUIStore = create<UIState>((set) => ({
   isExecutionPanelOpen: false,
   isExecutionInspectorMaximized: false,
   isAIModalOpen: false,
+  isTestLabOpen: false,
   undoToast: null,
 
   selectNode: (nodeId) =>
@@ -47,6 +51,8 @@ export const useUIStore = create<UIState>((set) => ({
 
   openAIModal: () => set({ isAIModalOpen: true }),
   closeAIModal: () => set({ isAIModalOpen: false }),
+  openTestLab: () => set({ isTestLabOpen: true, isAIModalOpen: false }),
+  closeTestLab: () => set({ isTestLabOpen: false }),
   showUndoToast: (undoToast) => set({ undoToast }),
   clearUndoToast: () => set({ undoToast: null }),
 }));
