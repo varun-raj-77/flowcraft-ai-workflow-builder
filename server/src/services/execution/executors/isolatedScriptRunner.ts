@@ -70,7 +70,7 @@ function isolatedWorkerMain() {
       try {
         const serialized = vm.dump(result.value);
         if (serialized === undefined || serialized === null) report({ ok: true, value: null });
-        else if (typeof serialized !== 'string' || Buffer.Buffer.byteLength(serialized, 'utf8') > job.maxOutput) {
+        else if (typeof serialized !== 'string' || Buffer.byteLength(serialized, 'utf8') > job.maxOutput) {
           report({ ok: false, limit: true, message: 'Script result exceeds 256 KB.' });
         } else report({ ok: true, value: JSON.parse(serialized) });
       } finally {
