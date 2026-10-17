@@ -231,7 +231,7 @@ describe('Test Lab visual workflow', () => {
     fireEvent.change(screen.getByLabelText('Execution mode'), { target: { value: 'isolated' } });
     fireEvent.click(screen.getByRole('button', { name: 'Run simulation' }));
     expect(await screen.findByText('Simulation failed')).toBeTruthy();
-    expect(screen.getByText('SCRIPT_GUEST_ERROR')).toBeTruthy();
+    expect(screen.getByText(/SCRIPT_GUEST_ERROR/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Explain failure' })).toBeNull();
     expect(diagnosis).not.toHaveBeenCalled();
   });
