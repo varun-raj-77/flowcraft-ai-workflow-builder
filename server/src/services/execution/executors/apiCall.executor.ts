@@ -26,7 +26,7 @@ export const executeApiCall: NodeExecutor = async ({ config, context }) => {
       body,
       timeoutMs,
     });
-    return { output: response };
+    return { output: { status: response.status, data: response.data, headers: response.headers } };
   } catch (err: unknown) {
     // Avoid putting URL paths, query credentials, or raw network errors in run logs.
     const message = err instanceof Error ? err.message : 'An unknown API Call error occurred.';
