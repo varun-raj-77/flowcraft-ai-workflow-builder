@@ -3,6 +3,7 @@ import * as controller from '../controllers/ai.controller';
 import { validateBody } from '../middleware/validate.middleware';
 import { generateWorkflowSchema, regenerateWorkflowSchema } from '../validators/ai.validator';
 import { createRateLimiter } from '../middleware/rateLimit.middleware';
+import { simulationScenarioSchema } from '../services/execution/workflowSimulation';
 
 const router = Router();
 const aiLimiter = createRateLimiter({ name: 'ai-generate', windowMs: 60 * 1000, max: 20 });
@@ -21,6 +22,14 @@ router.post(
   aiLimiter,
   validateBody(regenerateWorkflowSchema),
   controller.regenerateWorkflow,
+);
+
+// POST /api/ai/workflows/:workflowId/diagnose-simulation → advisory read-only failure triage
+router.post(
+  '/workflows/:workflowId/diagnose-simulation',
+  aiLimiter,
+  validateBody(simulationScenarioSchema),
+  controller.diagnoseSimulation,
 );
 
 export default router;
