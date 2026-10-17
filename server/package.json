@@ -13,6 +13,7 @@
     "verify:workflow-revisions": "node --import tsx src/scripts/verifyWorkflowRevisions.ts"
   },
   "dependencies": {
+    "@jitl/quickjs-wasmfile-release-sync": "0.31.0",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
@@ -22,7 +23,8 @@
     "mongoose": "^8.7.0",
     "socket.io": "^4.8.1",
     "ts-node": "^10.9.2",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "quickjs-emscripten-core": "0.31.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
