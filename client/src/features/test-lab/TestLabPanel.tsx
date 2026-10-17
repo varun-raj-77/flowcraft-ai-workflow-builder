@@ -26,7 +26,7 @@ export function TestLabPanel() {
   const workflowId = meta?._id ?? '';
   const revision = meta?.currentRevision ?? 0;
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useModalDialog({ isOpen, onClose: close, initialFocusRef: closeButtonRef });
+  const panelRef = useModalDialog({ isOpen, onClose: close, canClose: !running, initialFocusRef: closeButtonRef });
   const simNodes: SimulationNode[] = useMemo(() => nodes.map((node) => ({
     id: node.id, label: String(node.data.label), type: node.data.nodeType,
   })), [nodes]);
@@ -109,7 +109,7 @@ export function TestLabPanel() {
           <h2 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">Workflow Test Lab</h2>
           <p className="mt-1 text-xs text-[var(--text-muted)]">Test a saved revision without network calls, JavaScript execution, or side effects.</p>
         </div>
-        <button ref={closeButtonRef} type="button" aria-label="Close Test Lab" onClick={close}
+        <button ref={closeButtonRef} type="button" aria-label="Close Test Lab" onClick={close} disabled={running}
           className="fc-focus rounded-lg border border-[var(--border-faint)] px-2 py-1 text-lg text-[var(--text-secondary)]">×</button>
       </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
@@ -134,21 +134,21 @@ export function TestLabPanel() {
             {node.type === 'condition' ? <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor={'sim-branch-' + node.id} className={label}>Simulated branch</label>
-                <select id={'sim-branch-' + node.id} className={control} value={branches[node.id] ?? 'true'}
+                <select id={'sim-branch-' + node.id} className={control} disabled={running} value={branches[node.id] ?? 'true'}
                   onChange={(event) => { setBranches((prev) => ({ ...prev, [node.id]: event.target.value as 'true' | 'false' })); setResult(null); }}>
                   <option value="true">True</option><option value="false">False</option>
                 </select>
               </div>
               <div>
                 <label htmlFor={'sim-expected-' + node.id} className={label}>Expected branch</label>
-                <select id={'sim-expected-' + node.id} className={control} value={expectedBranches[node.id] ?? ''}
+                <select id={'sim-expected-' + node.id} className={control} disabled={running} value={expectedBranches[node.id] ?? ''}
                   onChange={(event) => { setExpectedBranches((prev) => ({ ...prev, [node.id]: event.target.value as '' | 'true' | 'false' })); setResult(null); }}>
                   <option value="">No assertion</option><option value="true">True</option><option value="false">False</option>
                 </select>
               </div>
             </div> : <div>
               <label htmlFor={'sim-fixture-' + node.id} className={label}>Mock output (JSON object)</label>
-              <textarea id={'sim-fixture-' + node.id} rows={5} spellCheck={false} value={fixtures[node.id] ?? ''}
+              <textarea id={'sim-fixture-' + node.id} rows={5} spellCheck={false} disabled={running} value={fixtures[node.id] ?? ''}
                 className={control + ' resize-y font-mono leading-5'}
                 onChange={(event) => { setFixtures((prev) => ({ ...prev, [node.id]: event.target.value })); setResult(null); }}/>
             </div>}
@@ -163,7 +163,7 @@ export function TestLabPanel() {
               <h3 className="text-sm font-semibold text-[var(--text-primary)]">2. Check expected results</h3>
               <p className="mt-1 text-xs text-[var(--text-muted)]">Assertions compare fields to JSON values (e.g. 200, true, or &quot;ok&quot;).</p>
             </div>
-            <Button size="sm" variant="secondary" disabled={!simNodes.length || assertions.length >= 100}
+            <Button size="sm" variant="secondary" disabled={running || !simNodes.length || assertions.length >= 100}
               onClick={() => {
                 nextId.current += 1;
                 setAssertions((items) => [...items, { id: String(nextId.current), nodeId: simNodes[0].id, path: '', expectedJson: 'null' }]);
@@ -175,25 +175,25 @@ export function TestLabPanel() {
             className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-3">
             <div className="mb-3 flex items-center justify-between">
               <strong className="text-xs text-[var(--text-primary)]">Assertion {index + 1}</strong>
-              <button type="button" className="fc-focus rounded px-2 py-1 text-xs text-red-300"
+              <button type="button" disabled={running} className="fc-focus rounded px-2 py-1 text-xs text-red-300"
                 onClick={() => { setAssertions((items) => items.filter((item) => item.id !== check.id)); setResult(null); }}>Remove</button>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={label} htmlFor={'sim-node-' + check.id}>Node</label>
-                <select id={'sim-node-' + check.id} className={control} value={check.nodeId}
+                <select id={'sim-node-' + check.id} className={control} disabled={running} value={check.nodeId}
                   onChange={(event) => updateAssertion(check.id, { nodeId: event.target.value })}>
                   {simNodes.map((node) => <option value={node.id} key={node.id}>{node.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className={label} htmlFor={'sim-path-' + check.id}>Output field (optional)</label>
-                <input id={'sim-path-' + check.id} className={control} placeholder="e.g. status" value={check.path}
+                <input id={'sim-path-' + check.id} className={control} disabled={running} placeholder="e.g. status" value={check.path}
                   onChange={(event) => updateAssertion(check.id, { path: event.target.value })}/>
               </div>
             </div>
             <label className={label + ' mt-3'} htmlFor={'sim-value-' + check.id}>Expected JSON value</label>
-            <input id={'sim-value-' + check.id} className={control + ' font-mono'} value={check.expectedJson}
+            <input id={'sim-value-' + check.id} className={control + ' font-mono'} disabled={running} value={check.expectedJson}
               onChange={(event) => updateAssertion(check.id, { expectedJson: event.target.value })}/>
           </div>)}</div>
         </section>
