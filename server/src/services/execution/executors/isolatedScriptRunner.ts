@@ -142,14 +142,12 @@ export async function executeIsolatedScript(
       };
       const watchdog = setTimeout(() => {
         done(new IsolatedScriptError('SCRIPT_LIMIT_EXCEEDED', 'Script exceeded its execution deadline.'));
-        void worker.terminate();
       }, TIMEOUT);
       worker.once('message', (reply: ScriptReply) => {
         if (!reply || reply.ok !== true) {
           done(new IsolatedScriptError(reply?.limit ? 'SCRIPT_LIMIT_EXCEEDED' : reply?.guestError ? 'SCRIPT_GUEST_ERROR' : 'SCRIPT_FAILED',
             reply?.message ?? 'Script execution failed.', reply?.stack));
         } else done(undefined, reply.value);
-        void worker.terminate();
       });
       worker.once('error', () => done(new IsolatedScriptError('SCRIPT_FAILED', 'Isolated script worker crashed.')));
       worker.once('exit', () => {
@@ -157,7 +155,11 @@ export async function executeIsolatedScript(
       });
     });
   } finally {
-    concurrent -= 1;
-    void worker.terminate();
+    // Do not release a concurrency slot until the worker has really exited.
+    try {
+      await worker.terminate();
+    } finally {
+      concurrent -= 1;
+    }
   }
 }
