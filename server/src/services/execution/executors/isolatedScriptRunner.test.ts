@@ -121,6 +121,14 @@ describe('isolated WebAssembly JavaScript execution', () => {
       .rejects.toMatchObject({ code: 'SCRIPT_GUEST_ERROR' });
   }, 12_000);
 
+  it('rejects Promise-valued Condition expressions instead of silently selecting true', async () => {
+    await expect(executeCondition({
+      nodeId: 'branch',
+      config: { expression: 'Promise.resolve(false)' },
+      context: context(),
+    })).rejects.toMatchObject({ code: 'SCRIPT_REJECTED' });
+  }, 12_000);
+
   it('does not share guest global variables between independent executions', async () => {
     const inputs = { input: {}, prev: {}, nodes: {} };
     await expect(executeIsolatedScript('transform', 'globalThis.privateMarker = 42; return true;', inputs))
