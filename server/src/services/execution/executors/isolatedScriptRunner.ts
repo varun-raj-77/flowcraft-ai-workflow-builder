@@ -48,7 +48,7 @@ function isolatedWorkerMain() {
       const json = JSON.stringify(job.inputs);
       const literal = JSON.stringify(json);
       const body = job.kind === 'condition'
-        ? 'return Boolean((' + job.code + '));'
+        ? 'return (' + job.code + ');'
         : job.code;
       const source = '(function() { "use strict";'
         + 'const payload=JSON.parse(' + literal + ');'
@@ -59,7 +59,7 @@ function isolatedWorkerMain() {
         + 'if (returned && typeof returned.then === "function") throw new Error("Async scripts are not supported.");'
         + 'const json=JSON.stringify(returned);'
         + 'if (json === undefined) throw new Error("Scripts must return a JSON-compatible result.");'
-        + 'return json; })()';
+        + 'return ' + (job.kind === 'condition' ? 'JSON.stringify(Boolean(returned))' : 'json') + '; })()';
       const result = vm.evalCode(source, 'flowcraft-' + job.kind + '.js');
       if (result.error) {
         try {
@@ -68,7 +68,7 @@ function isolatedWorkerMain() {
             ? error.message : String(error);
           const stack = error && typeof error === 'object' && typeof error.stack === 'string'
             ? error.stack : undefined;
-          report({ ok: false, guestError: true, message: message.slice(0, 500), stack: stack?.slice(0, 2000) });
+          report({ ok: false, guestError: true, unsupportedAsync: message === 'Async scripts are not supported.', message: message.slice(0, 500), stack: stack?.slice(0, 2000) });
         } finally {
           result.error.dispose();
         }
@@ -99,6 +99,7 @@ interface ScriptReply {
   stack?: string;
   limit?: boolean;
   guestError?: boolean;
+  unsupportedAsync?: boolean;
 }
 
 export async function executeIsolatedScript(
@@ -149,7 +150,7 @@ export async function executeIsolatedScript(
       }, TIMEOUT);
       worker.once('message', (reply: ScriptReply) => {
         if (!reply || reply.ok !== true) {
-          done(new IsolatedScriptError(reply?.limit ? 'SCRIPT_LIMIT_EXCEEDED' : reply?.guestError ? 'SCRIPT_GUEST_ERROR' : 'SCRIPT_FAILED',
+          done(new IsolatedScriptError(reply?.limit ? 'SCRIPT_LIMIT_EXCEEDED' : reply?.unsupportedAsync ? 'SCRIPT_REJECTED' : reply?.guestError ? 'SCRIPT_GUEST_ERROR' : 'SCRIPT_FAILED',
             reply?.message ?? 'Script execution failed.', reply?.stack));
         } else done(undefined, reply.value);
       });
