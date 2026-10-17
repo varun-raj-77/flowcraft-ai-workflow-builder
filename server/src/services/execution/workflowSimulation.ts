@@ -140,6 +140,7 @@ export function simulateDefinition(definition: WorkflowDefinition, rawScenario: 
     }
     const mock = Object.prototype.hasOwnProperty.call(scenario.mocks, id) ? scenario.mocks[id] : undefined;
     let output: Record<string, unknown>;
+    const config = node.config as Record<string, unknown>;
     let status: SimulationStep['status'] = 'simulated';
     switch (node.type) {
       case 'start':
@@ -148,13 +149,13 @@ export function simulateDefinition(definition: WorkflowDefinition, rawScenario: 
         break;
       case 'delay':
         // Simulated logical delay: deliberately never calls setTimeout.
-        output = { delayedMs: node.config.delayMs };
+        output = { delayedMs: config.delayMs };
         break;
       case 'output':
         // Deliberately does not invoke the production executor (it logs to stdout).
         output = {
-          logLevel: node.config.logLevel,
-          message: redactText(safeTemplate(String(node.config.message), outputs)),
+          logLevel: config.logLevel,
+          message: redactText(safeTemplate(String(config.message), outputs)),
         };
         break;
       case 'api_call':
