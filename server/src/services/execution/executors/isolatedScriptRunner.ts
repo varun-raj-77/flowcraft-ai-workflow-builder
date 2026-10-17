@@ -1,5 +1,4 @@
-import { Worker, parentPort, workerData } from 'node:worker_threads';
-import { byteLength } from 'node:buffer';
+import { Worker } from 'node:worker_threads';
 import { redactText } from '../../../utils/redact';
 import type { ExecutionInputs } from '../templateEngine';
 
@@ -71,7 +70,7 @@ function isolatedWorkerMain() {
       try {
         const serialized = vm.dump(result.value);
         if (serialized === undefined || serialized === null) report({ ok: true, value: null });
-        else if (typeof serialized !== 'string' || Buffer.byteLength(serialized, 'utf8') > job.maxOutput) {
+        else if (typeof serialized !== 'string' || Buffer.Buffer.byteLength(serialized, 'utf8') > job.maxOutput) {
           report({ ok: false, limit: true, message: 'Script result exceeds 256 KB.' });
         } else report({ ok: true, value: JSON.parse(serialized) });
       } finally {
@@ -99,7 +98,7 @@ export async function executeIsolatedScript(
   code: string,
   inputs: ExecutionInputs,
 ): Promise<unknown> {
-  if (byteLength(code, 'utf8') > MAX_SOURCE)
+  if (Buffer.byteLength(code, 'utf8') > MAX_SOURCE)
     throw new IsolatedScriptError('SCRIPT_LIMIT_EXCEEDED', 'Script source exceeds 16 KB.');
   let payload: string;
   try {
@@ -107,7 +106,7 @@ export async function executeIsolatedScript(
   } catch {
     throw new IsolatedScriptError('SCRIPT_REJECTED', 'Script inputs must be JSON-compatible.');
   }
-  if (!payload || byteLength(payload, 'utf8') > MAX_INPUT)
+  if (!payload || Buffer.byteLength(payload, 'utf8') > MAX_INPUT)
     throw new IsolatedScriptError('SCRIPT_LIMIT_EXCEEDED', 'Script inputs exceed 256 KB.');
   if (concurrent >= MAX_CONCURRENT)
     throw new IsolatedScriptError('SCRIPT_LIMIT_EXCEEDED', 'Isolated script execution is busy. Try again.');
