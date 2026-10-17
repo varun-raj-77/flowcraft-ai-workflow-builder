@@ -138,6 +138,12 @@ export async function diagnoseOwnedSimulation(
   userId: string,
   scenario: unknown,
 ): Promise<SimulationDiagnosis> {
+  // AI diagnosis currently reasons about mock fixtures only. Refuse real JS-mode
+  // requests rather than providing misleading advice from a mock-only prompt.
+  if (scenario && typeof scenario === 'object' && (scenario as Record<string, unknown>).mode === 'isolated') {
+    throw new AppError(409, 'SIMULATION_DIAGNOSIS_MODE_UNSUPPORTED',
+      'AI diagnosis currently supports mock-only simulations. Switch to Mock only to explain a failure.');
+  }
   // Re-run the verified mock-only simulation on the server, never trust client-submitted "results".
   const simulation = await simulateOwnedWorkflow(workflowId, userId, scenario);
   if (simulation.status !== 'failed') {
