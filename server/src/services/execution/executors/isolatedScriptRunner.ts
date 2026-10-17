@@ -12,7 +12,7 @@ let concurrent = 0;
 
 export class IsolatedScriptError extends Error {
   constructor(
-    readonly code: 'SCRIPT_REJECTED' | 'SCRIPT_LIMIT_EXCEEDED' | 'SCRIPT_FAILED',
+    readonly code: 'SCRIPT_REJECTED' | 'SCRIPT_GUEST_ERROR' | 'SCRIPT_LIMIT_EXCEEDED' | 'SCRIPT_FAILED',
     message: string,
     readonly guestStack?: string,
   ) {
@@ -64,7 +64,7 @@ function isolatedWorkerMain() {
             ? error.message : String(error);
           const stack = error && typeof error === 'object' && typeof error.stack === 'string'
             ? error.stack : undefined;
-          report({ ok: false, message: message.slice(0, 500), stack: stack?.slice(0, 2000) });
+          report({ ok: false, guestError: true, message: message.slice(0, 500), stack: stack?.slice(0, 2000) });
         } finally {
           result.error.dispose();
         }
@@ -94,6 +94,7 @@ interface ScriptReply {
   message?: string;
   stack?: string;
   limit?: boolean;
+  guestError?: boolean;
 }
 
 export async function executeIsolatedScript(
@@ -145,7 +146,7 @@ export async function executeIsolatedScript(
       }, TIMEOUT);
       worker.once('message', (reply: ScriptReply) => {
         if (!reply || reply.ok !== true) {
-          done(new IsolatedScriptError(reply?.limit ? 'SCRIPT_LIMIT_EXCEEDED' : 'SCRIPT_FAILED',
+          done(new IsolatedScriptError(reply?.limit ? 'SCRIPT_LIMIT_EXCEEDED' : reply?.guestError ? 'SCRIPT_GUEST_ERROR' : 'SCRIPT_FAILED',
             reply?.message ?? 'Script execution failed.', reply?.stack));
         } else done(undefined, reply.value);
         void worker.terminate();
