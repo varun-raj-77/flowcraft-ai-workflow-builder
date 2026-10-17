@@ -62,6 +62,25 @@ describe('isolated WebAssembly JavaScript execution', () => {
       .resolves.toBe(true);
   }, 12_000);
 
+  it('fails closed instead of taking the false branch on Condition timeout', async () => {
+    await expect(executeCondition({
+      nodeId: 'branch',
+      config: { expression: '(() => { while(true) {} })()' },
+      context: context(),
+    })).rejects.toMatchObject({ code: 'SCRIPT_LIMIT_EXCEEDED' });
+  }, 12_000);
+
+  it('fails closed when Condition input is too large for the isolated runtime', async () => {
+    const oversizedContext: ExecutionContext = new Map([
+      ['source', { data: 'x'.repeat(280_000) }],
+    ]);
+    await expect(executeCondition({
+      nodeId: 'branch',
+      config: { expression: 'true' },
+      context: oversizedContext,
+    })).rejects.toMatchObject({ code: 'SCRIPT_LIMIT_EXCEEDED' });
+  });
+
   it('denies oversized or cyclic inputs before allocating a worker', async () => {
     await expect(executeIsolatedScript('transform', 'return 1;', {
       input: { oversized: { value: 'x'.repeat(280_000) } }, prev: {}, nodes: {},
