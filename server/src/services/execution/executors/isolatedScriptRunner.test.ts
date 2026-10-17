@@ -112,6 +112,34 @@ describe('isolated WebAssembly JavaScript execution', () => {
     } satisfies Partial<TransformExecutionError>);
   }, 12_000);
 
+
+  it('rejects Promise and undefined returns rather than silently recording success', async () => {
+    const inputs = { input: {}, prev: {}, nodes: {} };
+    await expect(executeIsolatedScript('transform', 'return Promise.resolve({ ok: true });', inputs))
+      .rejects.toMatchObject({ code: 'SCRIPT_GUEST_ERROR' });
+    await expect(executeIsolatedScript('transform', 'return undefined;', inputs))
+      .rejects.toMatchObject({ code: 'SCRIPT_GUEST_ERROR' });
+  }, 12_000);
+
+  it('does not share guest global variables between independent executions', async () => {
+    const inputs = { input: {}, prev: {}, nodes: {} };
+    await expect(executeIsolatedScript('transform', 'globalThis.privateMarker = 42; return true;', inputs))
+      .resolves.toBe(true);
+    await expect(executeIsolatedScript('transform', 'return typeof globalThis.privateMarker;', inputs))
+      .resolves.toBe('undefined');
+  }, 12_000);
+
+  it('redacts secret-like values from successful Condition traces', async () => {
+    const result = await executeCondition({
+      nodeId: 'branch',
+      config: { expression: "'token=example-private-secret' === 'token=example-private-secret'" },
+      context: context(),
+    });
+    expect(result.output).toMatchObject({ result: true, branchTaken: 'true' });
+    expect(JSON.stringify(result.output)).not.toContain('example-private-secret');
+    expect(result.output.resolvedExpression).toContain('[REDACTED]');
+  }, 12_000);
+
   it('follows existing fail-false semantics for invalid Condition expressions', async () => {
     const result = await executeCondition({
       nodeId: 'branch', config: { expression: 'missingVariable.call()' }, context: context(),
