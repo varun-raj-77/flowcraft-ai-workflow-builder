@@ -180,14 +180,14 @@ export function TestLabPanel() {
               <div>
                 <label htmlFor={'sim-branch-' + node.id} className={label}>Simulated branch</label>
                 <select id={'sim-branch-' + node.id} className={control} disabled={running || diagnosing} value={branches[node.id] ?? 'true'}
-                  onChange={(event) => { setBranches((prev) => ({ ...prev, [node.id]: event.target.value as 'true' | 'false' })); setResult(null); }}>
+                  onChange={(event) => { setBranches((prev) => ({ ...prev, [node.id]: event.target.value as 'true' | 'false' })); invalidateReport(); }}>
                   <option value="true">True</option><option value="false">False</option>
                 </select>
               </div>
               <div>
                 <label htmlFor={'sim-expected-' + node.id} className={label}>Expected branch</label>
                 <select id={'sim-expected-' + node.id} className={control} disabled={running || diagnosing} value={expectedBranches[node.id] ?? ''}
-                  onChange={(event) => { setExpectedBranches((prev) => ({ ...prev, [node.id]: event.target.value as '' | 'true' | 'false' })); setResult(null); }}>
+                  onChange={(event) => { setExpectedBranches((prev) => ({ ...prev, [node.id]: event.target.value as '' | 'true' | 'false' })); invalidateReport(); }}>
                   <option value="">No assertion</option><option value="true">True</option><option value="false">False</option>
                 </select>
               </div>
@@ -195,7 +195,7 @@ export function TestLabPanel() {
               <label htmlFor={'sim-fixture-' + node.id} className={label}>Mock output (JSON object)</label>
               <textarea id={'sim-fixture-' + node.id} rows={5} spellCheck={false} disabled={running || diagnosing} value={fixtures[node.id] ?? ''}
                 className={control + ' resize-y font-mono leading-5'}
-                onChange={(event) => { setFixtures((prev) => ({ ...prev, [node.id]: event.target.value })); setResult(null); }}/>
+                onChange={(event) => { setFixtures((prev) => ({ ...prev, [node.id]: event.target.value })); invalidateReport(); }}/>
             </div>}
           </div>)}</div> : <p className="rounded-lg border border-dashed border-[var(--border-default)] p-3 text-xs text-[var(--text-muted)]">
             No mocks required. Start, Delay, Output and End nodes are simulated automatically.
@@ -212,7 +212,7 @@ export function TestLabPanel() {
               onClick={() => {
                 nextId.current += 1;
                 setAssertions((items) => [...items, { id: String(nextId.current), nodeId: simNodes[0].id, path: '', expectedJson: 'null' }]);
-                setResult(null);
+                invalidateReport();
               }}>+ Add</Button>
           </div>
           {assertions.length === 0 && <p className="rounded-lg border border-dashed border-[var(--border-default)] p-3 text-xs text-[var(--text-muted)]">No value assertions yet. Add a check to verify a node output.</p>}
@@ -221,7 +221,7 @@ export function TestLabPanel() {
             <div className="mb-3 flex items-center justify-between">
               <strong className="text-xs text-[var(--text-primary)]">Assertion {index + 1}</strong>
               <button type="button" disabled={running || diagnosing} className="fc-focus rounded px-2 py-1 text-xs text-red-300"
-                onClick={() => { setAssertions((items) => items.filter((item) => item.id !== check.id)); setResult(null); }}>Remove</button>
+                onClick={() => { setAssertions((items) => items.filter((item) => item.id !== check.id)); invalidateReport(); }}>Remove</button>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
