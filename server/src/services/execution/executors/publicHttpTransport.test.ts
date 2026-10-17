@@ -129,16 +129,16 @@ describe('connection-bound outbound HTTP guardrails', () => {
   });
 
   it('enforces request body, timeout, and protected header limits before network access', async () => {
-    await expect(requestPublicHttp('https://api.example.com/', {
+    expect(() => requestPublicHttp('https://api.example.com/', {
       method: 'POST', headers: {}, body: 'x'.repeat(MAX_API_BODY_BYTES + 1), timeoutMs: 1000,
-    })).rejects.toThrow('64 KB');
-    await expect(requestPublicHttp('https://api.example.com/', {
+    })).toThrow('64 KB');
+    expect(() => requestPublicHttp('https://api.example.com/', {
       method: 'GET', headers: {}, timeoutMs: 40_000,
-    })).rejects.toThrow('outside allowed limits');
+    })).toThrow('outside allowed limits');
     for (const header of ['Host', 'Content-Length', 'Connection', 'Transfer-Encoding']) {
-      await expect(requestPublicHttp('https://api.example.com/', {
+      expect(() => requestPublicHttp('https://api.example.com/', {
         method: 'GET', headers: { [header]: '127.0.0.1' }, timeoutMs: 1000,
-      })).rejects.toThrow('unsupported request header');
+      })).toThrow('unsupported request header');
     }
     expect(hooks.httpsRequest).not.toHaveBeenCalled();
   });
