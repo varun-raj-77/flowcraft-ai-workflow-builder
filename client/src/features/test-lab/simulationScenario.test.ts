@@ -77,4 +77,32 @@ describe('visual Test Lab fixture preparation', () => {
       fixtures: { ...defaults().fixtures, transform: JSON.stringify({ data: 'x'.repeat(51_000) }) },
     })).toThrow(/below 50 KB/);
   });
+
+  it('isolated mode sends API mocks but never submits Transform or Condition overrides', () => {
+    const scenario = buildSimulationScenario({ ...defaults(), mode: 'isolated' });
+    expect(scenario).toMatchObject({
+      expectedRevision: 3,
+      mode: 'isolated',
+      mocks: { api: { status: 200, data: [], headers: {} } },
+      expectedBranches: { decision: 'false' },
+    });
+    expect(Object.keys(scenario.mocks)).toEqual(['api']);
+    expect(scenario.assertions).toHaveLength(2);
+  });
+
+  it('isolated mode ignores invalid unused Transform fixtures and does not require branch mocks', () => {
+    const scenario = buildSimulationScenario({
+      ...defaults(), mode: 'isolated',
+      fixtures: { api: '{"status":200,"data":[]}', transform: '{broken' },
+      conditionBranches: {} as never,
+    });
+    expect(Object.keys(scenario.mocks)).toEqual(['api']);
+  });
+
+  it('requires API fixture JSON even when scripts are isolated', () => {
+    expect(() => buildSimulationScenario({
+      ...defaults(), mode: 'isolated',
+      fixtures: { ...defaults().fixtures, api: '{invalid' },
+    })).toThrow(/Fetch Issues: enter a valid JSON/);
+  });
 });
