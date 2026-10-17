@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { executeTransform } from './transform.executor';
 import { executeCondition } from './condition.executor';
 import { executeIsolatedScript, IsolatedScriptError } from './isolatedScriptRunner';
-import { TransformExecutionError } from './transformDiagnostics';
+import type { TransformExecutionError } from './transformDiagnostics';
 import type { ExecutionContext } from '../templateEngine';
 
 const context = (): ExecutionContext => new Map([
