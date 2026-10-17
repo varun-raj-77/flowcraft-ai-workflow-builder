@@ -26,7 +26,6 @@ export function TestLabPanel() {
   const workflowId = meta?._id ?? '';
   const revision = meta?.currentRevision ?? 0;
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useModalDialog({ isOpen, onClose: close, canClose: !running, initialFocusRef: closeButtonRef });
   const simNodes: SimulationNode[] = useMemo(() => nodes.map((node) => ({
     id: node.id, label: String(node.data.label), type: node.data.nodeType,
   })), [nodes]);
@@ -41,6 +40,7 @@ export function TestLabPanel() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [error, setError] = useState('');
+  const panelRef = useModalDialog({ isOpen, onClose: close, canClose: !running, initialFocusRef: closeButtonRef });
 
   // New revisions get new fixtures; unsaved changes are never silently simulated.
   useEffect(() => {
