@@ -43,7 +43,7 @@ export const executeCondition: NodeExecutor = async ({ config, context }) => {
     output: {
       result,
       branchTaken: result ? 'true' : 'false',
-      resolvedExpression: resolved,
+      resolvedExpression: redactText(resolved),
     },
   };
 };
