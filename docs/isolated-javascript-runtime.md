@@ -10,7 +10,7 @@ This milestone replaces direct `new Function()` evaluation inside the API server
 - No more than four simultaneous Worker executions are allowed per backend process. Excess load fails closed with a retryable error.
 - Input JSON is limited to 256 KiB, script source to 16 KiB and serialized output to 256 KiB.
 - Returned data is JSON-compatible; arbitrary JS functions, cyclic results, non-JSON special values and async Promises are not part of the supported user-code contract.
-- Transform failures continue through structured transform diagnostics; Condition failures return a false branch with redacted evaluation error and do not log the expression source.
+- Transform failures continue through structured transform diagnostics; **ordinary guest expression errors** may retain the legacy false-branch behavior with a redacted error. **Sandbox timeouts, resource limits, crashes and initialization failures stop the workflow** rather than silently choosing the false branch. Condition logs no expression source.
 
 ## Compatibility and intentional restrictions
 
