@@ -58,4 +58,53 @@ test.describe('Test Lab visual simulation', () => {
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
   });
+
+  test('explains a failed assertion with review-only AI advice', async ({ page }) => {
+    await installMockApi(page, { workflows: [executableWorkflow('workflow-diagnosis')] });
+    let diagnosisCalls = 0;
+    await page.route('**/api/executions/workflow-diagnosis/simulate', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: {
+        status: 'failed',
+        steps: [
+          { nodeId: 'start', nodeType: 'start', status: 'simulated' },
+          { nodeId: 'output', nodeType: 'output', status: 'simulated' },
+          { nodeId: 'end', nodeType: 'end', status: 'simulated' },
+        ],
+        assertions: [{ nodeId: 'output', path: 'message', passed: false, message: 'Expected value did not match' }],
+        provenance: { workflowRevision: 1, definitionHash: 'a'.repeat(64) },
+      } }) });
+    });
+    await page.route('**/api/ai/workflows/workflow-diagnosis/diagnose-simulation', async (route) => {
+      diagnosisCalls += 1;
+      expect(route.request().postDataJSON()).toMatchObject({
+        expectedRevision: 1,
+        assertions: [{ nodeId: 'output', path: 'message', equals: 'Incorrect expected message' }],
+      });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: {
+        provider: 'anthropic', model: 'test-haiku',
+        provenance: { workflowRevision: 1, definitionHash: 'a'.repeat(64) },
+        findings: [{
+          nodeId: 'output', action: 'review_assertion', confidence: 'medium',
+          explanation: 'The expected output message did not match the simulation fixture.',
+          suggestedNextStep: 'Check the assertion against the saved Output node message.',
+        }],
+        disclaimer: 'Advisory only. Changes require review.',
+      } }) });
+    });
+    await page.goto('/editor/workflow-diagnosis');
+    await page.getByRole('button', { name: '◈ Test Lab' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Workflow Test Lab' });
+    await dialog.getByRole('button', { name: '+ Add' }).click();
+    await dialog.getByLabel('Node').selectOption('output');
+    await dialog.getByLabel('Output field (optional)').fill('message');
+    await dialog.getByLabel('Expected JSON value').fill('"Incorrect expected message"');
+    await dialog.getByRole('button', { name: 'Run simulation' }).click();
+    await expect(dialog.getByText('Simulation failed')).toBeVisible();
+    expect(diagnosisCalls).toBe(0);
+    await dialog.getByRole('button', { name: 'Explain failure' }).click();
+    await expect(dialog.getByText(/expected output message did not match/)).toBeVisible();
+    await expect(dialog.getByText(/Advisory only/)).toBeVisible();
+    expect(diagnosisCalls).toBe(1);
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  });
 });
