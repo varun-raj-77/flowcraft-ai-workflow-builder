@@ -18,7 +18,7 @@ function fakeSocket(onResponse?: (res: EventEmitter & {
   statusCode: number;
   headers: Record<string, string>;
   destroy: () => void;
-}) => void) {
+}) => void, statusCode = 200) {
   const req = new EventEmitter() as EventEmitter & {
     end: (body?: string) => void; destroy: (error: Error) => void;
   };
@@ -31,7 +31,7 @@ function fakeSocket(onResponse?: (res: EventEmitter & {
     options = opts;
     if (onResponse) {
       const res = new EventEmitter() as EventEmitter & { statusCode: number; headers: Record<string, string>; destroy: () => void };
-      res.statusCode = 200;
+      res.statusCode = statusCode;
       res.headers = { 'content-type': 'application/json' };
       res.destroy = vi.fn();
       queueMicrotask(() => {
@@ -120,7 +120,7 @@ describe('connection-bound outbound HTTP guardrails', () => {
   });
 
   it('rejects redirect responses and never requests their Location header', async () => {
-    fakeSocket((res) => { res.statusCode = 302; res.headers.location = 'http://169.254.169.254/'; });
+    fakeSocket((res) => { res.headers.location = 'http://169.254.169.254/'; }, 302);
     hooks.dnsLookup.mockImplementation((_host, _options, done) => done(null, [{ address: '8.8.8.8', family: 4 }]));
     await expect(requestPublicHttp('https://api.example.com/public', {
       method: 'GET', headers: {}, timeoutMs: 500,
