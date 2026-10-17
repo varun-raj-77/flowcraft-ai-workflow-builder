@@ -46,6 +46,8 @@ export interface SimulationResult {
 
 const forbiddenKeys = new Set(['__proto__', 'constructor', 'prototype']);
 const simplePath = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
+const isSafePath = (path: string): boolean => simplePath.test(path)
+  && path.split('.').every((part) => !forbiddenKeys.has(part));
 const MAX_SCENARIO_BYTES = 50_000;
 const MAX_NODES = 80;
 const MAX_EDGES = 160;
@@ -55,7 +57,7 @@ function sanitize(value: Record<string, unknown>): Record<string, unknown> {
 }
 
 function readPath(value: unknown, path: string): unknown {
-  if (!simplePath.test(path)) return undefined;
+  if (!isSafePath(path)) return undefined;
   let current: unknown = value;
   for (const part of path.split('.')) {
     if (forbiddenKeys.has(part) || current === null || typeof current !== 'object'
@@ -69,7 +71,7 @@ function readPath(value: unknown, path: string): unknown {
 function safeTemplate(template: string, outputs: Map<string, Record<string, unknown>>): string {
   return template.replace(/\{\{([^{}]{1,160})\}\}/g, (_match, raw: string) => {
     const path = raw.trim();
-    if (!simplePath.test(path)) return '';
+    if (!isSafePath(path)) return '';
     const [root, ...rest] = path.split('.');
     const values = Array.from(outputs.values());
     const last = values[values.length - 1];
@@ -105,7 +107,7 @@ function checkScenario(definition: WorkflowDefinition, input: unknown): Simulati
     }
   }
   for (const assertion of scenario.assertions) {
-    if (!ids.has(assertion.nodeId) || (assertion.path !== undefined && !simplePath.test(assertion.path))) {
+    if (!ids.has(assertion.nodeId) || (assertion.path !== undefined && !isSafePath(assertion.path))) {
       throw new AppError(400, 'INVALID_SIMULATION_ASSERTION', 'Assertions must reference existing nodes and simple property paths');
     }
   }
@@ -179,8 +181,10 @@ export function simulateDefinition(definition: WorkflowDefinition, rawScenario: 
         steps.push({ nodeId: id, nodeType: node.type, status: 'failed', error: 'UNSUPPORTED_SIMULATION_NODE' });
         continue;
     }
-    outputs.set(id, output);
-    steps.push({ nodeId: id, nodeType: node.type, status, output: sanitize(output) });
+    // Do not let credential-like fields enter the interpolation context or test result.
+    const safeOutput = sanitize(output);
+    outputs.set(id, safeOutput);
+    steps.push({ nodeId: id, nodeType: node.type, status, output: safeOutput });
     if (node.type === 'condition') {
       for (const skippedId of findSkippedNodes(id, output.branchTaken as 'true' | 'false', graph.edges, skipped)) {
         skipped.add(skippedId);
