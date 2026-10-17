@@ -71,7 +71,8 @@ function safeTemplate(template: string, outputs: Map<string, Record<string, unkn
     const path = raw.trim();
     if (!simplePath.test(path)) return '';
     const [root, ...rest] = path.split('.');
-    const last = Array.from(outputs.values()).at(-1);
+    const values = Array.from(outputs.values());
+    const last = values[values.length - 1];
     const source = root === 'prev' ? last : outputs.get(root);
     const value = rest.length ? readPath(source, rest.join('.')) : source;
     if (value === null || value === undefined) return '';
@@ -99,7 +100,7 @@ function checkScenario(definition: WorkflowDefinition, input: unknown): Simulati
     if (ids.get(id) === 'condition' && mock.branchTaken !== 'true' && mock.branchTaken !== 'false') {
       throw new AppError(400, 'INVALID_SIMULATION_MOCK', 'Condition mocks must declare branchTaken as true or false');
     }
-    if (ids.get(id) === 'api_call' && (!Number.isInteger(mock.status) || (mock.status as number) < 100 || (mock.status as number) > 599 || !Object.prototype.hasOwnProperty.call(mock, 'data'))) {
+    if (ids.get(id) === 'api_call' && (typeof mock.status !== 'number' || !Number.isInteger(mock.status) || mock.status < 100 || (mock.status as number) > 599 || !Object.prototype.hasOwnProperty.call(mock, 'data'))) {
       throw new AppError(400, 'INVALID_SIMULATION_MOCK', 'API mocks must include HTTP status and data');
     }
   }
