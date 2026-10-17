@@ -46,6 +46,7 @@ function safePath(value: string): boolean {
 
 export function buildSimulationScenario({
   revision,
+  mode = 'mock',
   nodes,
   fixtures,
   conditionBranches,
@@ -53,6 +54,7 @@ export function buildSimulationScenario({
   assertions,
 }: {
   revision: number;
+  mode?: 'mock' | 'isolated';
   nodes: SimulationNode[];
   fixtures: Record<string, string>;
   conditionBranches: Record<string, 'true' | 'false'>;
@@ -63,12 +65,13 @@ export function buildSimulationScenario({
     throw new Error('Save this workflow before running the Test Lab.');
   }
 
+  if (mode !== 'mock' && mode !== 'isolated') throw new Error('Unknown Test Lab execution mode.');
   const knownNodes = new Set(nodes.map((node) => node.id));
   const mocks: SimulationScenario['mocks'] = {};
   const branches: SimulationScenario['expectedBranches'] = {};
 
   for (const node of nodes) {
-    if (node.type === 'api_call' || node.type === 'transform') {
+    if (node.type === 'api_call' || (mode === 'mock' && node.type === 'transform')) {
       const mock = jsonObject(fixtures[node.id] ?? '', node.label);
       if (node.type === 'api_call') {
         if (!Number.isInteger(mock.status) || (mock.status as number) < 100 || (mock.status as number) > 599
@@ -82,10 +85,12 @@ export function buildSimulationScenario({
       mocks[node.id] = mock;
     } else if (node.type === 'condition') {
       const branchTaken = conditionBranches[node.id];
-      if (branchTaken !== 'true' && branchTaken !== 'false') {
-        throw new Error(`${node.label}: choose a simulated condition branch.`);
+      if (mode === 'mock') {
+        if (branchTaken !== 'true' && branchTaken !== 'false') {
+          throw new Error(`${node.label}: choose a simulated condition branch.`);
+        }
+        mocks[node.id] = { branchTaken };
       }
-      mocks[node.id] = { branchTaken };
       const expected = expectedBranches[node.id];
       if (expected === 'true' || expected === 'false') branches[node.id] = expected;
     }
@@ -108,7 +113,11 @@ export function buildSimulationScenario({
     }
     return { nodeId, ...(trimmed ? { path: trimmed } : {}), equals };
   });
-  const scenario: SimulationScenario = { expectedRevision: revision, mocks, assertions: checks, expectedBranches: branches };
+  const scenario: SimulationScenario = {
+    expectedRevision: revision,
+    ...(mode === 'isolated' ? { mode: 'isolated' as const } : {}),
+    mocks, assertions: checks, expectedBranches: branches,
+  };
   if (new TextEncoder().encode(JSON.stringify(scenario)).length > MAX_BYTES) {
     throw new Error('Simulation fixtures and assertions must stay below 50 KB.');
   }

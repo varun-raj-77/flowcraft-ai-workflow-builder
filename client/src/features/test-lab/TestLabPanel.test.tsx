@@ -196,4 +196,43 @@ describe('Test Lab visual workflow', () => {
     expect(screen.queryByRole('button', { name: 'Explain failure' })).toBeNull();
     expect(diagnose).not.toHaveBeenCalled();
   });
+
+  it('switches to isolated mode, hides script fixtures and sends only API mocks', async () => {
+    const simulation = vi.spyOn(api, 'simulateWorkflow').mockResolvedValue({
+      ...fakeResult,
+      mode: 'isolated',
+    });
+    render(<TestLabPanel />);
+    const panel = screen.getByRole('dialog', { name: 'Workflow Test Lab' });
+    fireEvent.change(within(panel).getByLabelText('Execution mode'), { target: { value: 'isolated' } });
+    expect(within(panel).getByText(/Actual saved Transform code runs in isolated QuickJS/)).toBeTruthy();
+    expect(within(panel).queryByLabelText('Simulated branch')).toBeNull();
+    expect(within(panel).getAllByLabelText('Mock output (JSON object)', { selector: 'textarea', exact: true })).toHaveLength(1);
+    fireEvent.change(within(panel).getByLabelText('Expected branch'), { target: { value: 'true' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Run simulation' }));
+    await waitFor(() => expect(simulation).toHaveBeenCalledOnce());
+    expect(simulation.mock.calls[0][1]).toMatchObject({
+      mode: 'isolated',
+      expectedRevision: 2,
+      mocks: { fetch: { status: 200, data: [], headers: {} } },
+      expectedBranches: { condition: 'true' },
+    });
+    expect(Object.keys(simulation.mock.calls[0][1].mocks)).toEqual(['fetch']);
+    expect(await within(panel).findByText('Isolated logic execution steps')).toBeTruthy();
+  });
+
+  it('never offers fixture-only AI diagnosis for isolated script errors', async () => {
+    const diagnosis = vi.spyOn(api, 'diagnoseSimulation');
+    vi.spyOn(api, 'simulateWorkflow').mockResolvedValue({
+      ...fakeResult, mode: 'isolated', status: 'failed',
+      steps: [{ nodeId: 'transform', nodeType: 'transform', status: 'failed', error: 'SCRIPT_GUEST_ERROR' }],
+    });
+    render(<TestLabPanel />);
+    fireEvent.change(screen.getByLabelText('Execution mode'), { target: { value: 'isolated' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run simulation' }));
+    expect(await screen.findByText('Simulation failed')).toBeTruthy();
+    expect(screen.getByText(/SCRIPT_GUEST_ERROR/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Explain failure' })).toBeNull();
+    expect(diagnosis).not.toHaveBeenCalled();
+  });
 });
