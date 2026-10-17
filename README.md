@@ -32,6 +32,7 @@ The project focuses on engineering problems that go beyond a traditional CRUD ap
 - controlled graph editing and validation
 - deterministic DAG execution
 - real-time execution streaming
+- backend-only mock-driven, read-only Test Lab simulations (Milestone 1; UI pending)
 - AI output validation
 - user-scoped authentication and persistence
 - immutable revision history, semantic comparison, and safe restore
@@ -416,6 +417,7 @@ TRUSTED_ORIGINS=https://your-frontend.example.com
 | `POST` | `/api/workflows/:id/revisions/:revision/restore` | Restore as a new revision |
 | `GET` | `/api/workflows/:id/ai-prompt-context` | Resolve current definition prompt lineage |
 | `POST` | `/api/executions/:id/run` | Execute a workflow |
+| `POST` | `/api/executions/:id/simulate` | Simulate with explicit fixtures and assertions (no external effects) |
 | `GET` | `/api/executions/run/:runId/provenance` | Inspect exact execution revision provenance |
 | `POST` | `/api/ai/generate` | Generate and validate a workflow |
 | `POST` | `/api/ai/workflows/:id/regenerate` | Generate and atomically persist a new AI revision |
