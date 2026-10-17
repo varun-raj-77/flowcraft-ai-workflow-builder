@@ -13,6 +13,7 @@ import { CanvasToolbar } from '@/features/workflow-canvas/CanvasToolbar';
 import { WorkflowCanvas } from '@/features/workflow-canvas/WorkflowCanvas';
 import { ConfigPanel } from '@/features/node-config/ConfigPanel';
 import { ExecutionPanel } from '@/features/execution-viewer/ExecutionPanel';
+import { TestLabPanel } from '@/features/test-lab/TestLabPanel';
 import { AIGeneratorModal } from '@/features/ai-generator/AIGeneratorModal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
@@ -42,6 +43,7 @@ export default function EditorPage() {
       resetRevisionComparison();
       useUIStore.getState().selectNode(null);
       useUIStore.getState().closeAIModal();
+      useUIStore.getState().closeTestLab();
       setLoadState('loading');
       setLoadError('');
 
@@ -118,6 +120,7 @@ export default function EditorPage() {
       </div>
       <AIGeneratorModal mode="current-workflow" />
       <RevisionHistoryPanel />
+      <TestLabPanel />
     </ReactFlowProvider>
   );
 }
