@@ -51,7 +51,7 @@ describe('Test Lab visual workflow', () => {
     render(<TestLabPanel />);
     const dialog = screen.getByRole('dialog', { name: 'Workflow Test Lab' });
     expect(within(dialog).getByText('v2')).toBeTruthy();
-    expect(within(dialog).getByLabelText('Mock output (JSON object)', { selector: 'textarea', exact: true })).toBeTruthy();
+    expect(within(dialog).getAllByLabelText('Mock output (JSON object)', { selector: 'textarea', exact: true })).toHaveLength(2);
     expect(within(dialog).getByLabelText('Simulated branch')).toBeTruthy();
     expect(within(dialog).getByLabelText('Expected branch')).toBeTruthy();
     expect(within(dialog).getByText(/without network calls, JavaScript execution/i)).toBeTruthy();
