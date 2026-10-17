@@ -12,6 +12,13 @@ router.post(
   controller.runWorkflow,
 );
 
+// POST   /api/executions/:workflowId/simulate → Mock-only, pinned, read-only test run
+router.post(
+  '/:workflowId/simulate',
+  executionLimiter,
+  controller.simulateWorkflow,
+);
+
 // GET    /api/executions/run/:runId           → Get a specific execution result
 router.get(
   '/run/:runId/provenance',
