@@ -41,6 +41,7 @@ Success responses use `{ "data": ... }`, except `GET /health` and successful `DE
 | `DELETE` | `/workflows/:id` | 204 | Delete root, revisions, and execution runs |
 | `POST` | `/ai/generate` | 200 | Generate and validate an unpersisted candidate |
 | `POST` | `/ai/workflows/:workflowId/regenerate` | 201 | Generate and atomically persist an AI revision |
+| `POST` | `/ai/workflows/:workflowId/diagnose-simulation` | 200 | Re-simulate owned current revision and return sanitized read-only AI advice |
 | `POST` | `/executions/:workflowId/run` | 201 | Pin the current revision and start execution |
 | `POST` | `/executions/:workflowId/simulate` | 200 | Verify current revision and simulate with explicit mocks only |
 | `GET` | `/executions/run/:runId` | 200 | Read one owned execution |
@@ -274,6 +275,10 @@ The prompt is 1–2000 characters. This endpoint returns a validated candidate b
 ```
 
 Ownership and the starting revision are checked before the provider call and checked again inside the write transaction. A complete, valid provider result creates a new `ai_generated` revision and returns the hydrated workflow. Incomplete capability coverage returns `422 AI_CAPABILITY_INCOMPLETE`; untrustworthy prompt metadata returns `422 AI_GENERATION_METADATA_INVALID`; a concurrent writer returns `409 WORKFLOW_REVISION_CONFLICT`.
+
+### POST /api/ai/workflows/:workflowId/diagnose-simulation
+
+Uses the same `expectedRevision`, `mocks`, `assertions`, and `expectedBranches` body as the mock-only simulation API. The server revalidates ownership, current revision, and hash, reruns the simulation, then sends **only anonymized failure categories** to the configured provider. Returns advisory `findings[]` with `nodeId`, suggested action and next step, bounded explanations, low/medium confidence and pinned provenance. No graph content, fixtures, or expected values are sent to AI. No changes are applied. A passing simulation returns 409. See [AI diagnosis contract](../docs/test-lab-ai-diagnosis.md).
 
 ## Executions and provenance
 
