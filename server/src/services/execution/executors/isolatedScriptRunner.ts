@@ -55,7 +55,11 @@ function isolatedWorkerMain() {
         + 'const input=payload.input,prev=payload.prev,nodes=payload.nodes;'
         + 'const fn=function(input,prev,nodes) { "use strict";\n'
         + body + '\n};'
-        + 'return JSON.stringify(fn(input,prev,nodes)); })()';
+        + 'const returned=fn(input,prev,nodes);'
+        + 'if (returned && typeof returned.then === "function") throw new Error("Async scripts are not supported.");'
+        + 'const json=JSON.stringify(returned);'
+        + 'if (json === undefined) throw new Error("Scripts must return a JSON-compatible result.");'
+        + 'return json; })()';
       const result = vm.evalCode(source, 'flowcraft-' + job.kind + '.js');
       if (result.error) {
         try {
