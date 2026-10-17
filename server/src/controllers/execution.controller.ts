@@ -1,6 +1,7 @@
 import { type Request, type Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import * as engine from '../services/execution/executionEngine';
+import { simulateOwnedWorkflow } from '../services/execution/workflowSimulation';
 import { redactText } from '../utils/redact';
 
 // ── POST /api/executions/:workflowId/run ────────────────────
@@ -17,6 +18,13 @@ export const runWorkflow = asyncHandler(async (req: Request, res: Response) => {
   engine.runExecution(run).catch((err) => {
     console.error(`[execution] Unhandled error for run ${run._id}:`, redactText(err instanceof Error ? err.message : String(err)));
   });
+});
+
+// ── POST /api/executions/:workflowId/simulate ───────────────
+
+export const simulateWorkflow = asyncHandler(async (req: Request, res: Response) => {
+  const result = await simulateOwnedWorkflow(req.params.workflowId, req.userId!, req.body);
+  res.status(200).json({ data: result });
 });
 
 // ── GET /api/executions/:runId ──────────────────────────────
