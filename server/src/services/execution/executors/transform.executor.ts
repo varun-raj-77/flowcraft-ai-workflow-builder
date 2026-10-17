@@ -1,6 +1,7 @@
 import { buildExecutionInputs } from '../templateEngine';
 import type { NodeExecutor } from './types';
 import { createTransformDiagnostic, TransformExecutionError } from './transformDiagnostics';
+import { executeIsolatedScript, IsolatedScriptError } from './isolatedScriptRunner';
 
 export const executeTransform: NodeExecutor = async ({ config, context }) => {
   const code = String(config.transformCode || 'return input');
@@ -8,17 +9,8 @@ export const executeTransform: NodeExecutor = async ({ config, context }) => {
   const executionInputs = buildExecutionInputs(context);
 
   try {
-    // 'input' = all outputs keyed by node ID
-    // 'prev' = the most recent node's output (convenience alias)
-    // 'nodes' = same as input (alias)
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(
-      'input',
-      'prev',
-      'nodes',
-      `"use strict";\n${code}\n//# sourceURL=flowcraft-transform.js`,
-    );
-    const result = fn(executionInputs.input, executionInputs.prev, executionInputs.nodes);
+    // Isolated QuickJS/WebAssembly: no Node process, filesystem or network globals.
+    const result = await executeIsolatedScript('transform', code, executionInputs);
 
     const output = (result !== null && result !== undefined && typeof result === 'object')
       ? result as Record<string, unknown>
@@ -29,7 +21,7 @@ export const executeTransform: NodeExecutor = async ({ config, context }) => {
     const message = err instanceof Error ? err.message : String(err);
     throw new TransformExecutionError(createTransformDiagnostic(code, executionInputs.input, {
       message,
-      stack: err instanceof Error ? err.stack : undefined,
+      stack: err instanceof IsolatedScriptError ? err.guestStack : err instanceof Error ? err.stack : undefined,
       prev: executionInputs.prev,
     }));
   }

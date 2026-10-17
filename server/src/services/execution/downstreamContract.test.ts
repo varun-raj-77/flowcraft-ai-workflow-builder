@@ -78,7 +78,7 @@ describe('downstream execution contract', () => {
       },
       context: contextWithApiResult(),
     })).rejects.toMatchObject({
-      diagnostic: expect.objectContaining({ originalError: 'issues.forEach is not a function' }),
+      diagnostic: expect.objectContaining({ code: 'TRANSFORM_INPUT_TYPE_MISMATCH', referencedPath: 'input.node_1', originalError: 'not a function' }),
     } satisfies Partial<TransformExecutionError>);
   });
 
@@ -121,7 +121,6 @@ describe('downstream execution contract', () => {
       message: 'Transform expected an array, but input.node_1.data contained object (HTTP 401).',
       originalError: 'Expected an array from "Fetch GitHub Issues".',
       transformSource: generatedTransform,
-      failingLine: 3,
       referencedPath: 'input.node_1.data',
       runtimeContext: {
         input: {

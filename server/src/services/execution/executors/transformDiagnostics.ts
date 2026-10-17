@@ -109,6 +109,32 @@ function findApiTypeMismatch(input: Record<string, unknown>, originalError: stri
   return null;
 }
 
+/**
+ * QuickJS can report only "not a function". Recognize the common case
+ * of calling an array method on an API response wrapper, but only when
+ * both the script source and actual upstream shape confirm it.
+ */
+function findApiWrapperArrayMisuse(code: string, input: Record<string, unknown>, originalError: string) {
+  if (!/not a function/i.test(originalError)) return null;
+  const assignments = code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*input\.([A-Za-z_$][\w$]*)\s*;/g);
+  for (const match of assignments) {
+    const alias = match[1];
+    const nodeId = match[2];
+    const callsArrayMethod = new RegExp('\\b' + alias + '\\s*\\.(?:forEach|map|filter|reduce)\\s*\\(').test(code);
+    if (!callsArrayMethod) continue;
+    const value = input[nodeId];
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const output = value as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(output, 'status') || !Object.prototype.hasOwnProperty.call(output, 'data')) continue;
+    return {
+      nodeId,
+      status: typeof output.status === 'number' ? output.status : undefined,
+      availableFields: publicKeys(output),
+    };
+  }
+  return null;
+}
+
 function findMissingReference(code: string, input: Record<string, unknown>) {
   const matches = code.matchAll(/\binput((?:\.[A-Za-z_$][\w$]*|\[(?:'[^']+'|"[^"]+"|\d+)\])+)/g);
   for (const match of matches) {
@@ -173,6 +199,19 @@ export function createTransformDiagnostic(
       suggestion: typeMismatch.status === 401 || typeMismatch.status === 403
         ? 'Authenticate the API Call, confirm it returns an array, and then run the workflow again.'
         : 'Confirm the API Call returns an array, or update the Transform to handle this response shape.',
+    };
+  }
+  const wrapperMisuse = findApiWrapperArrayMisuse(code, input, originalError);
+  if (wrapperMisuse) {
+    const status = wrapperMisuse.status === undefined ? '' : ' (HTTP ' + wrapperMisuse.status + ')';
+    return {
+      code: 'TRANSFORM_INPUT_TYPE_MISMATCH',
+      message: 'Transform attempted an array operation on input.' + wrapperMisuse.nodeId + ', an API response wrapper' + status + '.',
+      ...common,
+      upstreamNodeId: wrapperMisuse.nodeId,
+      referencedPath: 'input.' + wrapperMisuse.nodeId,
+      availableFields: wrapperMisuse.availableFields,
+      suggestion: 'Use input.' + wrapperMisuse.nodeId + '.data for API response payloads and verify it is an array.',
     };
   }
   const match = findMissingReference(code, input);
