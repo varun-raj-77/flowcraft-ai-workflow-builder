@@ -59,7 +59,7 @@ describe('CanvasToolbar', () => {
 
     render(<CanvasToolbar />);
 
-    for (const name of ['Undo', 'Redo', '✦ AI Generate', 'Save', 'Run']) {
+    for (const name of ['Undo', 'Redo', '◈ Test Lab', '✦ AI Generate', 'Save', 'Run']) {
       expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
     }
     expect(screen.getByText('v1')).toBeTruthy();
@@ -87,7 +87,7 @@ describe('CanvasToolbar', () => {
 
     render(<CanvasToolbar />);
 
-    for (const name of ['Undo', 'Redo', '✦ AI Generate', 'Save', 'Run']) {
+    for (const name of ['Undo', 'Redo', '◈ Test Lab', '✦ AI Generate', 'Save', 'Run']) {
       expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
     }
     expect(screen.getByText('v2')).toBeTruthy();
