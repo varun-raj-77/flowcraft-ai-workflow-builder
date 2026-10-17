@@ -28,11 +28,14 @@ export class IsolatedScriptError extends Error {
  * inside the guest. Worker threads alone are not a security boundary.
  */
 function isolatedWorkerMain() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { parentPort: port, workerData: job } = require('node:worker_threads');
   const report = (message: object) => port.postMessage(message);
   (async () => {
-    const { newQuickJSWASMModuleFromVariant } = require(job.corePath);
-    const imported = require(job.variantPath);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { newQuickJSWASMModuleFromVariant } = require(job.corePath);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const imported = require(job.variantPath);
     const variant = imported.default ?? imported;
     const wasm = await newQuickJSWASMModuleFromVariant(variant);
     const runtime = wasm.newRuntime();
