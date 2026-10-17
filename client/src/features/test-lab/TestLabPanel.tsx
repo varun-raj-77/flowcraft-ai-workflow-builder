@@ -29,6 +29,7 @@ export function TestLabPanel() {
   const simNodes: SimulationNode[] = useMemo(() => nodes.map((node) => ({
     id: node.id, label: String(node.data.label), type: node.data.nodeType,
   })), [nodes]);
+  const [mode, setMode] = useState<'mock' | 'isolated'>('mock');
   const mocks = simNodes.filter((node) => ['api_call', 'transform', 'condition'].includes(node.type));
 
   const [fixtures, setFixtures] = useState<Record<string, string>>(() => initialSimulationFixtures(simNodes));
@@ -49,6 +50,7 @@ export function TestLabPanel() {
 
   // New revisions get new fixtures; unsaved changes are never silently simulated.
   useEffect(() => {
+    setMode('mock');
     setFixtures(initialSimulationFixtures(simNodes));
     setBranches(initialConditionBranches(simNodes));
     setExpectedBranches({});
@@ -82,7 +84,7 @@ export function TestLabPanel() {
     lastScenarioRef.current = null;
     try {
       const scenario = buildSimulationScenario({
-        revision, nodes: simNodes, fixtures, conditionBranches: branches, expectedBranches, assertions,
+        revision, mode, nodes: simNodes, fixtures, conditionBranches: branches, expectedBranches, assertions,
       });
       const response = await api.simulateWorkflow(workflowId, scenario);
       const latest = useWorkflowStore.getState();
@@ -104,7 +106,7 @@ export function TestLabPanel() {
   };
 
   const diagnose = async () => {
-    if (blocked || busy.current || diagnosisBusy.current || result?.status !== 'failed' || !lastScenarioRef.current) return;
+    if (mode !== 'mock' || blocked || busy.current || diagnosisBusy.current || result?.status !== 'failed' || !lastScenarioRef.current) return;
     diagnosisBusy.current = true;
     setDiagnosing(true);
     setDiagnosis(null);
@@ -152,7 +154,9 @@ export function TestLabPanel() {
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-widest text-violet-300">FlowCraft · Developer tools</p>
           <h2 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">Workflow Test Lab</h2>
-          <p className="mt-1 text-xs text-[var(--text-muted)]">Test a saved revision without network calls, JavaScript execution, or side effects.</p>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">{mode === 'mock'
+            ? 'Test a saved revision without network calls, JavaScript execution, or side effects.'
+            : 'Run real Transform/Condition logic inside isolated QuickJS. API nodes stay mocked; no network calls.'}</p>
         </div>
         <button ref={closeButtonRef} type="button" aria-label="Close Test Lab" onClick={close} disabled={running || diagnosing}
           className="fc-focus rounded-lg border border-[var(--border-faint)] px-2 py-1 text-lg text-[var(--text-secondary)]">×</button>
@@ -164,34 +168,53 @@ export function TestLabPanel() {
             <span className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-1 font-mono text-xs text-violet-200">{revision ? 'v' + revision : 'Unsaved'}</span>
           </div>
           <p className="mt-1 truncate text-xs text-[var(--text-muted)]">{meta?.name ?? 'Untitled Workflow'} · {simNodes.length} nodes</p>
+          <div className="mt-3">
+            <label htmlFor="sim-mode" className={label}>Execution mode</label>
+            <select id="sim-mode" className={control} value={mode} disabled={running || diagnosing}
+              onChange={(event) => { setMode(event.target.value as 'mock' | 'isolated'); invalidateReport(); }}>
+              <option value="mock">Mock only — no JavaScript execution</option>
+              <option value="isolated">Isolated JS — execute Transform and Condition</option>
+            </select>
+            {mode === 'isolated' && <p className="mt-2 text-[11px] text-amber-200">
+              Scripts run under QuickJS resource limits. API calls remain mocked, and errors fail the simulation.
+              No workflow revisions or execution histories are modified.
+            </p>}
+          </div>
           {blockMessage && <p role="alert" className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{blockMessage}</p>}
         </section>
 
         <section aria-label="Simulation fixtures">
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">1. Mock node outputs</h3>
-          <p className="mb-3 mt-1 text-xs text-[var(--text-muted)]">Transform code and Condition expressions are never evaluated. Provide the outputs they would return.</p>
+          <p className="mb-3 mt-1 text-xs text-[var(--text-muted)]">{mode === 'mock'
+            ? 'Transform code and Condition expressions are never evaluated. Provide the outputs they would return.'
+            : 'Provide mock API responses. Transform code and Condition expressions execute inside isolated QuickJS.'}</p>
           {mocks.length ? <div className="space-y-3">{mocks.map((node) => <div key={node.id}
             className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="truncate text-xs font-semibold text-[var(--text-primary)]">{node.label}</span>
               <span className="shrink-0 rounded bg-violet-500/10 px-2 py-1 text-[10px] text-violet-300">{node.type.replace('_', ' ')}</span>
             </div>
-            {node.type === 'condition' ? <div className="grid grid-cols-2 gap-3">
-              <div>
+            {node.type === 'condition' ? <div className={mode === 'mock' ? 'grid grid-cols-2 gap-3' : 'space-y-2'}>
+              {mode === 'mock' && <div>
                 <label htmlFor={'sim-branch-' + node.id} className={label}>Simulated branch</label>
                 <select id={'sim-branch-' + node.id} className={control} disabled={running || diagnosing} value={branches[node.id] ?? 'true'}
                   onChange={(event) => { setBranches((prev) => ({ ...prev, [node.id]: event.target.value as 'true' | 'false' })); invalidateReport(); }}>
                   <option value="true">True</option><option value="false">False</option>
                 </select>
-              </div>
+              </div>}
               <div>
                 <label htmlFor={'sim-expected-' + node.id} className={label}>Expected branch</label>
                 <select id={'sim-expected-' + node.id} className={control} disabled={running || diagnosing} value={expectedBranches[node.id] ?? ''}
                   onChange={(event) => { setExpectedBranches((prev) => ({ ...prev, [node.id]: event.target.value as '' | 'true' | 'false' })); invalidateReport(); }}>
                   <option value="">No assertion</option><option value="true">True</option><option value="false">False</option>
                 </select>
+                {mode === 'isolated' && <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+                  The actual saved expression determines the branch. Set an expected branch to test it.
+                </p>}
               </div>
-            </div> : <div>
+            </div> : mode === 'isolated' && node.type === 'transform' ?
+              <p className="text-xs text-[var(--text-muted)]">Actual saved Transform code runs in isolated QuickJS; no fixture is needed.</p>
+            : <div>
               <label htmlFor={'sim-fixture-' + node.id} className={label}>Mock output (JSON object)</label>
               <textarea id={'sim-fixture-' + node.id} rows={5} spellCheck={false} disabled={running || diagnosing} value={fixtures[node.id] ?? ''}
                 className={control + ' resize-y font-mono leading-5'}
@@ -259,7 +282,7 @@ export function TestLabPanel() {
               {result.assertions.length === 0 && <p className="mt-2 text-xs text-[var(--text-muted)]">No assertions were added. Add checks to verify expected behavior.</p>}
             </div>
             <div>
-              <h4 className="mb-2 text-xs font-semibold text-[var(--text-secondary)]">Simulated steps</h4>
+              <h4 className="mb-2 text-xs font-semibold text-[var(--text-secondary)]">{result.mode === 'isolated' ? 'Isolated logic execution steps' : 'Simulated steps'}</h4>
               <ol className="space-y-1.5">{result.steps.map((step) => <li key={step.nodeId}
                 className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border-faint)] p-2 text-xs">
                 <button type="button" onClick={() => { close(); selectNode(step.nodeId); }}
@@ -271,7 +294,7 @@ export function TestLabPanel() {
                 </span>
               </li>)}</ol>
             </div>
-            {result.status === 'failed' && <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-3" aria-label="AI failure diagnosis">
+            {result.status === 'failed' && mode === 'mock' && <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-3" aria-label="AI failure diagnosis">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h4 className="text-xs font-semibold text-violet-200">AI-assisted diagnosis</h4>
