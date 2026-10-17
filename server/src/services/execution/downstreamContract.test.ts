@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WORKFLOW_GENERATION_SYSTEM_PROMPT } from '../../prompts/workflowGeneration';
 import { executeApiCall } from './executors/apiCall.executor';
+import { requestPublicHttp } from './executors/publicHttpTransport';
+vi.mock('./executors/publicHttpTransport', () => ({ requestPublicHttp: vi.fn() }));
 import { executeCondition } from './executors/condition.executor';
 import { executeTransform } from './executors/transform.executor';
 import { TransformExecutionError } from './executors/transformDiagnostics';
@@ -23,10 +25,9 @@ afterEach(() => {
 
 describe('downstream execution contract', () => {
   it('keeps API payload data and response metadata in one predictable wrapper', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
-      JSON.stringify([{ id: 1 }]),
-      { status: 200, headers: { 'content-type': 'application/json', 'x-request-id': 'request-1' } },
-    )));
+    vi.mocked(requestPublicHttp).mockResolvedValue({
+      status: 200, data: [{ id: 1 }], headers: { 'content-type': 'application/json', 'x-request-id': 'request-1' },
+    });
 
     const result = await executeApiCall({
       nodeId: 'node_1',
@@ -34,6 +35,9 @@ describe('downstream execution contract', () => {
       context: new Map(),
     });
 
+    expect(requestPublicHttp).toHaveBeenCalledWith('https://api.example.test/issues', {
+      method: 'GET', headers: {}, body: undefined, timeoutMs: 5000,
+    });
     expect(result.output).toEqual({
       status: 200,
       data: [{ id: 1 }],
