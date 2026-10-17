@@ -7,8 +7,10 @@ const mocks = vi.hoisted(() => ({
   executionCreate: vi.fn(),
   executionFindOne: vi.fn(),
   executionFind: vi.fn(),
+  requestPublicHttp: vi.fn(),
 }));
 
+vi.mock('./executors/publicHttpTransport', () => ({ requestPublicHttp: mocks.requestPublicHttp }));
 vi.mock('../../models/Workflow.model', () => ({
   Workflow: { findOne: mocks.workflowFindOne, updateOne: mocks.workflowUpdateOne },
 }));
@@ -91,11 +93,9 @@ describe('pinned workflow execution', () => {
     const revisionV1 = makeRevision();
     mocks.workflowFindOne.mockReturnValue(queryResult(workflow));
     mocks.revisionFindOne.mockReturnValue(queryResult(revisionV1));
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ revision: 1 }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
-    ));
-    vi.stubGlobal('fetch', fetchMock);
+    mocks.requestPublicHttp.mockResolvedValue({
+      status: 200, data: { revision: 1 }, headers: { 'content-type': 'application/json' },
+    });
 
     const run = await startExecution('workflow-1', 'user-1');
     workflow.currentRevisionId = objectId('revision-v2');
@@ -109,8 +109,8 @@ describe('pinned workflow execution', () => {
       definitionHash: revisionV1.definitionHash,
       status: 'completed',
     });
-    expect(fetchMock).toHaveBeenCalledWith('https://v1.example.test/data', expect.any(Object));
-    expect(fetchMock).not.toHaveBeenCalledWith('https://v2.example.test/data', expect.any(Object));
+    expect(mocks.requestPublicHttp).toHaveBeenCalledWith('https://v1.example.test/data', expect.any(Object));
+    expect(mocks.requestPublicHttp).not.toHaveBeenCalledWith('https://v2.example.test/data', expect.any(Object));
     expect(run.stepLogs[0].input).toEqual({ config: nodesV1[0].config });
     expect(mocks.workflowFindOne).toHaveBeenCalledTimes(1);
     expect(mocks.revisionFindOne.mock.calls[1][0]).toMatchObject({
