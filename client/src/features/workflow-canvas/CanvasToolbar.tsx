@@ -87,6 +87,7 @@ export function CanvasToolbar() {
   const canRedo = useWorkflowStore((s) => s.redoStack.length > 0);
   const selectNode = useUIStore((s) => s.selectNode);
   const openAIModal = useUIStore((s) => s.openAIModal);
+  const openTestLab = useUIStore((s) => s.openTestLab);
   const [showPreflight, setShowPreflight] = useState(false);
   const previewRevision = useRevisionHistoryStore((state) => state.previewRevision);
   const openHistory = useRevisionHistoryStore((state) => state.openHistory);
@@ -115,6 +116,7 @@ export function CanvasToolbar() {
   const showHistory = () => {
     if (!meta?._id) return;
     useUIStore.getState().closeAIModal();
+    useUIStore.getState().closeTestLab();
     void openHistory(meta._id);
   };
 
@@ -150,6 +152,9 @@ export function CanvasToolbar() {
         </div>
         <Button variant="ghost" size="sm" onClick={showHistory} disabled={!meta?._id}>
           ◷ History
+        </Button>
+        <Button variant="secondary" size="sm" onClick={openTestLab} disabled={isReadOnly || !meta?._id}>
+          ◈ Test Lab
         </Button>
         <Button variant="secondary" size="sm" onClick={openAIModal} disabled={isReadOnly}>
           ✦ AI Generate

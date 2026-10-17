@@ -32,7 +32,7 @@ The project focuses on engineering problems that go beyond a traditional CRUD ap
 - controlled graph editing and validation
 - deterministic DAG execution
 - real-time execution streaming
-- backend-only mock-driven, read-only Test Lab simulations (Milestone 1; UI pending)
+- visual Test Lab with mock API/Transform outputs, simulated condition branches, and expected-output checks (no external side effects)
 - AI output validation
 - user-scoped authentication and persistence
 - immutable revision history, semantic comparison, and safe restore

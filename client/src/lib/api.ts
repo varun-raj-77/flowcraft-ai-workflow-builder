@@ -11,6 +11,8 @@ import type {
   ExecutionRevisionProvenance,
   WorkflowAiPromptContext,
   RegenerateWorkflowRequest,
+  SimulationScenario,
+  SimulationResult,
 } from '@/types';
 
 // All browser API traffic is same-origin. The App Router proxy forwards /api
@@ -195,6 +197,14 @@ export async function getWorkflowAiPromptContext(
 export async function runWorkflow(workflowId: string): Promise<ExecutionRun> {
   return request<ExecutionRun>(`/executions/${workflowId}/run`, {
     method: 'POST',
+  });
+}
+
+/** Simulate an immutable saved workflow using fixtures; does not create execution runs. */
+export async function simulateWorkflow(workflowId: string, scenario: SimulationScenario): Promise<SimulationResult> {
+  return request<SimulationResult>(`/executions/${workflowId}/simulate`, {
+    method: 'POST',
+    body: JSON.stringify(scenario),
   });
 }
 
