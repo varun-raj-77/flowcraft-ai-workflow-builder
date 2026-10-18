@@ -367,7 +367,7 @@ describe('M14 paginated execution inspector', () => {
 });
 
 describe('M15 status-filtered execution history races', () => {
-  it('discards delayed results from an old filter and preserves only the latest matching run', async () => {
+  it('discards delayed results from an old filter after the user switches again', async () => {
     setPersistedWorkflow();
     let resolveFailed!: (page: { runs: ExecutionRun[]; nextCursor: string | null }) => void;
     const apiMock = vi.spyOn(api, 'listExecutionHistoryPage').mockImplementation((_id, _cursor, status = 'all') => {
@@ -379,13 +379,12 @@ describe('M15 status-filtered execution history races', () => {
     await screen.findByRole('button', { name: 'Set baseline for execution history_run' });
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter history by status' }), { target: { value: 'failed' } });
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('workflow_1', null, 'failed'));
-    // The new status control reappears when the new page finishes; drive the
-    // succeeding switch through store state to cover the latest-request guard.
-    useExecutionStore.getState().setHistoryLoading('workflow_1', 'completed');
-    // The cancelled delayed request can no longer publish foreign-filter rows.
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter history by status' }), { target: { value: 'completed' } });
+    await screen.findByRole('button', { name: 'Set baseline for execution live_run' });
     resolveFailed({ runs: [historicalRun], nextCursor: 'stale' });
-    await waitFor(() => expect(useExecutionStore.getState().historyFilter).toBe('completed'));
-    expect(useExecutionStore.getState().historyRuns).toEqual([]);
+    await waitFor(() => expect(useExecutionStore.getState().historyRuns.map((run) => run._id)).toEqual(['live_run']));
+    expect(useExecutionStore.getState().historyFilter).toBe('completed');
     expect(useExecutionStore.getState().historyNextCursor).toBeNull();
   });
+
 });
