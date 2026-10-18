@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   executionUpdateOne: vi.fn(),
   executionFindOne: vi.fn(),
   executionFind: vi.fn(),
+  executionIndexes: vi.fn(),
   requestPublicHttp: vi.fn(),
 }));
 
@@ -27,6 +28,7 @@ vi.mock('../../models/ExecutionRun.model', () => ({
     updateOne: mocks.executionUpdateOne,
     findOne: mocks.executionFindOne,
     find: mocks.executionFind,
+    collection: { indexes: mocks.executionIndexes },
   },
 }));
 
@@ -268,6 +270,10 @@ describe('M10 explicitly acknowledged, idempotent interrupted-execution retries'
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.workflowUpdateOne.mockResolvedValue({ matchedCount: 1 });
+    mocks.executionIndexes.mockResolvedValue([{
+      key: { retryOfRunId: 1 }, unique: true,
+      partialFilterExpression: { retryOfRunId: { $type: 'objectId' } },
+    }]);
     mocks.executionUpdateOne.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
     mocks.executionCreate.mockImplementation(async (documents: Array<Record<string, unknown>>) => [{
       ...documents[0], _id: objectId('new-run-1'),
@@ -367,6 +373,29 @@ describe('M10 explicitly acknowledged, idempotent interrupted-execution retries'
     const result = await retryInterruptedExecution(sourceRunId, 'user-1', true);
     expect(result).toEqual({ run: prior, created: false });
     expect(mocks.executionCreate).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed when the unique retry index has not been created yet', async () => {
+    mocks.executionIndexes.mockResolvedValueOnce([]);
+    await expect(retryInterruptedExecution(sourceRunId, 'user-1', true))
+      .rejects.toMatchObject({ code: 'RETRY_INDEX_UNAVAILABLE', statusCode: 503 });
+    expect(mocks.executionCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-unique or incorrectly filtered retry indexes', async () => {
+    mocks.executionIndexes.mockResolvedValueOnce([
+      { key: { retryOfRunId: 1 }, unique: false, partialFilterExpression: { retryOfRunId: { $type: 'objectId' } } },
+    ]);
+    await expect(retryInterruptedExecution(sourceRunId, 'user-1', true))
+      .rejects.toMatchObject({ code: 'RETRY_INDEX_UNAVAILABLE' });
+    expect(mocks.executionCreate).not.toHaveBeenCalled();
+  });
+
+  it('does not create a retry when the index read fails due to database outage', async () => {
+    mocks.executionIndexes.mockRejectedValueOnce(new Error('DB index metadata unavailable'));
+    await expect(retryInterruptedExecution(sourceRunId, 'user-1', true))
+      .rejects.toMatchObject({ code: 'RETRY_INDEX_UNAVAILABLE' });
+    expect(mocks.executionCreate).not.toHaveBeenCalled();
   });
 
   it('does not misclassify unrelated unique constraint violations as successful retries', async () => {
