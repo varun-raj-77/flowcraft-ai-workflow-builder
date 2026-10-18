@@ -312,7 +312,7 @@ describe('M14 paginated execution inspector', () => {
     await screen.findByRole('button', { name: 'Set baseline for execution oldest-21' });
     expect(request).toHaveBeenNthCalledWith(2, 'workflow_1', 'opaque-cursor');
     expect(screen.getByText(/21 loaded executions/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Baseline selected' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Set baseline for execution new-0' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByRole('button', { name: 'Load older runs' })).toBeNull();
     expect(useExecutionStore.getState().currentRun).toBe(live);
   });
