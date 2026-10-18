@@ -31,7 +31,8 @@ vi.mock('../../models/ExecutionRun.model', () => ({
 }));
 
 import { calculateDefinitionHash } from '../workflowDefinition';
-import { getExecutionById, runExecution, startExecution } from './executionEngine';
+import { getExecutionById, retryInterruptedExecution, runExecution, startExecution } from './executionEngine';
+import { EXECUTION_INTERRUPTED_MESSAGE } from './executionRecovery';
 
 function objectId(value: string) {
   return { toString: () => value };
@@ -230,5 +231,148 @@ describe('pinned workflow execution', () => {
     });
     expect(mocks.workflowFindOne).not.toHaveBeenCalled();
     expect(mocks.revisionFindOne).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('M10 explicitly acknowledged, idempotent interrupted-execution retries', () => {
+  const sourceRunId = '507f1f77bcf86cd799439011';
+  const sourceRevision = makeRevision();
+
+  function source(overrides: Record<string, unknown> = {}) {
+    return {
+      _id: objectId(sourceRunId),
+      workflowId: objectId('workflow-1'),
+      userId: 'user-1',
+      status: 'failed',
+      error: EXECUTION_INTERRUPTED_MESSAGE,
+      workflowRevisionId: sourceRevision._id,
+      workflowRevision: 1,
+      definitionHash: sourceRevision.definitionHash,
+      ...overrides,
+    };
+  }
+
+  function setup(overrides: Record<string, unknown> = {}) {
+    const interrupted = source(overrides);
+    mocks.workflowFindOne.mockReturnValue(queryResult({
+      _id: objectId('workflow-1'), userId: 'user-1',
+      currentRevisionId: sourceRevision._id,
+      currentRevision: 1,
+    }));
+    mocks.revisionFindOne.mockReturnValue(queryResult(sourceRevision));
+    mocks.executionFindOne.mockImplementation((filter: { retryOfRunId?: string }) =>
+      queryResult(filter.retryOfRunId ? null : interrupted));
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.workflowUpdateOne.mockResolvedValue({ matchedCount: 1 });
+    mocks.executionUpdateOne.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
+    mocks.executionCreate.mockImplementation(async (documents: Array<Record<string, unknown>>) => [{
+      ...documents[0], _id: objectId('new-run-1'),
+      save: vi.fn(), markModified: vi.fn(),
+    }]);
+    setup();
+  });
+
+  it('requires explicit confirmation before reading data or creating side effects', async () => {
+    await expect(retryInterruptedExecution(sourceRunId, 'user-1', false))
+      .rejects.toMatchObject({ code: 'RETRY_ACKNOWLEDGEMENT_REQUIRED', statusCode: 400 });
+    expect(mocks.executionFindOne).not.toHaveBeenCalled();
+    expect(mocks.executionCreate).not.toHaveBeenCalled();
+  });
+
+  it('validates source ID format before database operations', async () => {
+    await expect(retryInterruptedExecution('invalid', 'user-1', true))
+      .rejects.toMatchObject({ code: 'INVALID_ID', statusCode: 400 });
+    expect(mocks.executionFindOne).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing/cross-tenant sources without revealing their existence', async () => {
+    mocks.executionFindOne.mockReturnValue(queryResult(null));
+    await expect(retryInterruptedExecution(sourceRunId, 'attacker-2', true))
+      .rejects.toMatchObject({ code: 'EXECUTION_NOT_FOUND', statusCode: 404 });
+    expect(mocks.executionCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses ordinary errors, ongoing runs and completed runs', async () => {
+    for (const overrides of [
+      { status: 'running' }, { status: 'completed' }, { status: 'failed', error: 'API 500' },
+    ]) {
+      setup(overrides);
+      await expect(retryInterruptedExecution(sourceRunId, 'user-1', true))
+        .rejects.toMatchObject({ code: 'RETRY_SOURCE_NOT_INTERRUPTED', statusCode: 409 });
+    }
+    expect(mocks.executionCreate).not.toHaveBeenCalled();
+  });
+
+  it('rechecks revision identity inside the creation transaction and rejects v2 drift', async () => {
+    setup();
+    mocks.workflowFindOne.mockReturnValue(queryResult({
+      _id: objectId('workflow-1'), userId: 'user-1',
+      currentRevisionId: objectId('revision-v2'), currentRevision: 2,
+    }));
+    await expect(retryInterruptedExecution(sourceRunId, 'user-1', true))
+      .rejects.toMatchObject({ code: 'RETRY_REVISION_CHANGED', statusCode: 409 });
+    expect(mocks.executionCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects stored source hash mismatch with the still-current immutable revision', async () => {
+    setup({ definitionHash: 'a'.repeat(64) });
+    await expect(retryInterruptedExecution(sourceRunId, 'user-1', true))
+      .rejects.toMatchObject({ code: 'RETRY_REVISION_CHANGED', statusCode: 409 });
+    expect(mocks.executionCreate).not.toHaveBeenCalled();
+  });
+
+  it('creates a fresh, pinned run with new step logs, retry lineage and a separate lease', async () => {
+    const result = await retryInterruptedExecution(sourceRunId, 'user-1', true);
+    expect(result.created).toBe(true);
+    expect(result.run).toMatchObject({
+      status: 'running',
+      retryOfRunId: objectId(sourceRunId),
+      workflowRevision: 1,
+      definitionHash: sourceRevision.definitionHash,
+    });
+    expect(result.run.leaseOwner).toBeTruthy();
+    expect(mocks.executionCreate).toHaveBeenCalledOnce();
+    expect(mocks.executionCreate.mock.calls[0][0][0]).toMatchObject({
+      retryOfRunId: objectId(sourceRunId),
+      status: 'running',
+      stepLogs: [{ status: 'pending' }],
+    });
+  });
+
+  it('returns an existing attempt without creating or executing another run', async () => {
+    const prior = { _id: objectId('previous'), retryOfRunId: objectId(sourceRunId), status: 'completed' };
+    mocks.executionFindOne.mockImplementation((filter: { retryOfRunId?: string }) =>
+      queryResult(filter.retryOfRunId ? prior : source()));
+    const result = await retryInterruptedExecution(sourceRunId, 'user-1', true);
+    expect(result).toEqual({ run: prior, created: false });
+    expect(mocks.executionCreate).not.toHaveBeenCalled();
+  });
+
+  it('resolves concurrent unique-index races by returning the winning run only', async () => {
+    const prior = { _id: objectId('winner'), retryOfRunId: objectId(sourceRunId), status: 'running' };
+    let checks = 0;
+    mocks.executionFindOne.mockImplementation((filter: { retryOfRunId?: string }) => {
+      if (!filter.retryOfRunId) return queryResult(source());
+      checks += 1;
+      return queryResult(checks > 1 ? prior : null);
+    });
+    mocks.executionCreate.mockRejectedValueOnce(Object.assign(new Error('duplicate'), {
+      code: 11000, keyPattern: { retryOfRunId: 1 },
+    }));
+    const result = await retryInterruptedExecution(sourceRunId, 'user-1', true);
+    expect(result).toEqual({ run: prior, created: false });
+    expect(mocks.executionCreate).toHaveBeenCalledOnce();
+  });
+
+  it('does not misclassify unrelated unique constraint violations as successful retries', async () => {
+    mocks.executionCreate.mockRejectedValueOnce(Object.assign(new Error('duplicate elsewhere'), {
+      code: 11000, keyPattern: { unrelated: 1 },
+    }));
+    await expect(retryInterruptedExecution(sourceRunId, 'user-1', true))
+      .rejects.toThrow('duplicate elsewhere');
   });
 });
