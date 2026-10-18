@@ -1,0 +1,48 @@
+name: M7 production smoke (manual, read-only)
+
+# Intentionally no push, pull_request, schedule or deployment triggers.
+# The pre-existing broad production-smoke workflow is separate and untouched.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "public: anonymous GET checks; pinned: dedicated-account Test Lab simulation"
+        type: choice
+        required: true
+        default: public
+        options:
+          - public
+          - pinned
+      confirmation:
+        description: "For pinned only, enter READ_ONLY_PINNED_SIMULATION"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: read-only-production-smoke
+  cancel-in-progress: false
+
+jobs:
+  read-only-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify smoke harness without live network calls
+        run: node --test .github/scripts/read-only-production-smoke.test.mjs
+      - name: Check production using the selected read-only mode
+        env:
+          FLOWCRAFT_SMOKE_MODE: ${{ inputs.mode }}
+          FLOWCRAFT_SMOKE_CONFIRM: ${{ inputs.confirmation }}
+          FLOWCRAFT_SMOKE_EMAIL: ${{ secrets.FLOWCRAFT_SMOKE_EMAIL }}
+          FLOWCRAFT_SMOKE_PASSWORD: ${{ secrets.FLOWCRAFT_SMOKE_PASSWORD }}
+          FLOWCRAFT_SMOKE_WORKFLOW_ID: ${{ vars.FLOWCRAFT_SMOKE_WORKFLOW_ID }}
+          FLOWCRAFT_SMOKE_REVISION: ${{ vars.FLOWCRAFT_SMOKE_REVISION }}
+          FLOWCRAFT_SMOKE_DEFINITION_HASH: ${{ vars.FLOWCRAFT_SMOKE_DEFINITION_HASH }}
+        run: node .github/scripts/read-only-production-smoke.mjs
