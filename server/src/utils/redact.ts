@@ -17,6 +17,65 @@ function redactInlineText(value: string): string {
       '$1=[REDACTED]');
 }
 
+/**
+ * Output nodes often surround JSON templates with prose. Walk balanced JSON
+ * fragments (respecting escaped quotes) and scrub them structurally as well.
+ * Bound extra parsing work; the inline rules below still apply to large text.
+ */
+function redactEmbeddedJson(value: string): string {
+  if (value.length > 256 * 1024 || !SENSITIVE_KEY.test(value)) return value;
+  let safe = '';
+  let cursor = 0;
+  while (cursor < value.length) {
+    const opening = value[cursor];
+    if (opening !== '{' && opening !== '[') {
+      safe += opening;
+      cursor += 1;
+      continue;
+    }
+    const closing = [opening === '{' ? '}' : ']'];
+    let inString = false;
+    let escaped = false;
+    let end = -1;
+    for (let index = cursor + 1; index < value.length; index += 1) {
+      const character = value[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') inString = true;
+      else if (character === '{' || character === '[') closing.push(character === '{' ? '}' : ']');
+      else if (character === '}' || character === ']') {
+        if (closing.pop() !== character) break;
+        if (closing.length === 0) {
+          end = index;
+          break;
+        }
+      }
+    }
+    if (end >= 0) {
+      try {
+        const parsed: unknown = JSON.parse(value.slice(cursor, end + 1));
+        if (parsed && typeof parsed === 'object') {
+          const cleaned = redactSecrets(parsed);
+          if (JSON.stringify(parsed) !== JSON.stringify(cleaned)) {
+            safe += JSON.stringify(cleaned);
+            cursor = end + 1;
+            continue;
+          }
+        }
+      } catch {
+        // The apparent fragment was not JSON; leave it for inline matching.
+      }
+    }
+    safe += opening;
+    cursor += 1;
+  }
+  return safe;
+}
+
 export function redactText(value: string): string {
   // A full JSON object/array can contain sensitive objects, arrays and nested
   // JSON strings. Redact structurally when possible, including sensitive keys
@@ -35,7 +94,7 @@ export function redactText(value: string): string {
       // Embedded fragments and malformed JSON still receive inline masking.
     }
   }
-  return redactInlineText(safe);
+  return redactInlineText(redactEmbeddedJson(safe));
 }
 
 /** Redacts common credential fields before data is persisted to execution logs. */
