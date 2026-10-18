@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   workflowUpdateOne: vi.fn(),
   revisionFindOne: vi.fn(),
   executionCreate: vi.fn(),
+  executionUpdateOne: vi.fn(),
   executionFindOne: vi.fn(),
   executionFind: vi.fn(),
   requestPublicHttp: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('../../models/WorkflowRevision.model', () => ({
 vi.mock('../../models/ExecutionRun.model', () => ({
   ExecutionRun: {
     create: mocks.executionCreate,
+    updateOne: mocks.executionUpdateOne,
     findOne: mocks.executionFindOne,
     find: mocks.executionFind,
   },
@@ -70,6 +72,7 @@ function makeRevision() {
 }
 
 beforeEach(() => {
+  mocks.executionUpdateOne.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
   mocks.workflowUpdateOne.mockResolvedValue({ matchedCount: 1 });
   mocks.executionCreate.mockImplementation(async (documents: Array<Record<string, unknown>>) => [{
     ...documents[0],
