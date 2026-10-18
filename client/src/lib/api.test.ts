@@ -6,6 +6,7 @@ import {
   getWorkflowAiPromptContext,
   getWorkflowRevision,
   listWorkflowRevisions,
+  listExecutionHistoryPage,
   regenerateWorkflow,
   restoreWorkflowRevision,
   updateWorkflow,
@@ -87,6 +88,22 @@ describe('shared API client', () => {
       2,
       '/api/workflows/workflow-1/revisions/7',
       expect.objectContaining({ credentials: 'include', cache: 'no-store' }),
+    );
+  });
+
+  it('requests bounded execution pages with encoded cursors and first-party credentials', async () => {
+    const request = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ data: { runs: [], nextCursor: null } }), { status: 200 },
+    ));
+    vi.stubGlobal('fetch', request);
+    expect(await listExecutionHistoryPage('workflow-1', 'opaque+/token')).toEqual({ runs: [], nextCursor: null });
+    expect(request).toHaveBeenCalledWith(
+      '/api/executions/workflow/workflow-1/page?cursor=opaque%2B%2Ftoken',
+      expect.objectContaining({ credentials: 'include', cache: 'no-store' }),
+    );
+    await listExecutionHistoryPage('workflow-1');
+    expect(request).toHaveBeenLastCalledWith(
+      '/api/executions/workflow/workflow-1/page', expect.any(Object),
     );
   });
 
