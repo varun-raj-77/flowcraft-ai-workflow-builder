@@ -44,7 +44,7 @@ afterEach(cleanup);
 describe('ExecutionPanel', () => {
   it('loads history for a persisted workflow and keeps the active live run when a historical run is selected', async () => {
     setPersistedWorkflow();
-    vi.spyOn(api, 'listExecutions').mockResolvedValue([historicalRun]);
+    vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [historicalRun], nextCursor: null });
     render(<ExecutionPanel />);
 
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
@@ -57,7 +57,7 @@ describe('ExecutionPanel', () => {
   });
 
   it('does not request history for an unsaved workflow', async () => {
-    const listExecutions = vi.spyOn(api, 'listExecutions');
+    const listExecutions = vi.spyOn(api, 'listExecutionHistoryPage');
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     expect(await screen.findByText(/Save this workflow before viewing execution history/i)).toBeTruthy();
@@ -66,7 +66,7 @@ describe('ExecutionPanel', () => {
 
   it('renders an empty history state', async () => {
     setPersistedWorkflow();
-    vi.spyOn(api, 'listExecutions').mockResolvedValue([]);
+    vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [], nextCursor: null });
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     expect(await screen.findByText(/No executions have been recorded/i)).toBeTruthy();
@@ -74,9 +74,9 @@ describe('ExecutionPanel', () => {
 
   it('renders a typed history error and retries', async () => {
     setPersistedWorkflow();
-    const listExecutions = vi.spyOn(api, 'listExecutions')
+    const listExecutions = vi.spyOn(api, 'listExecutionHistoryPage')
       .mockRejectedValueOnce(new api.ApiError(401, 'MISSING_TOKEN', 'Authentication required'))
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce({ runs: [], nextCursor: null });
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     expect(await screen.findByText(/Your session has expired/i)).toBeTruthy();
@@ -218,7 +218,7 @@ describe('M12 history diagnosis and safe comparisons', () => {
 
   it('filters the locally loaded 20-run history and shows a useful empty filter state', async () => {
     setPersistedWorkflow();
-    const fetchHistory = vi.spyOn(api, 'listExecutions').mockResolvedValue([failed, success]);
+    const fetchHistory = vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [failed, success], nextCursor: null });
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     await screen.findByRole('button', { name: 'Set baseline for execution m12-failed' });
@@ -232,7 +232,7 @@ describe('M12 history diagnosis and safe comparisons', () => {
 
   it('compares two runs with the same verified revision without changing execution state or revealing payloads', async () => {
     setPersistedWorkflow();
-    vi.spyOn(api, 'listExecutions').mockResolvedValue([failed, success]);
+    vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [failed, success], nextCursor: null });
     const before = useExecutionStore.getState().currentRun;
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
@@ -250,7 +250,7 @@ describe('M12 history diagnosis and safe comparisons', () => {
 
   it('prevents misleading node-level comparison across changed workflow revisions', async () => {
     setPersistedWorkflow();
-    vi.spyOn(api, 'listExecutions').mockResolvedValue([failed, { ...success, definitionHash: 'b'.repeat(64) }]);
+    vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [failed, { ...success, definitionHash: 'b'.repeat(64) }], nextCursor: null });
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     await screen.findByRole('button', { name: 'Set baseline for execution m12-failed' });
@@ -278,17 +278,17 @@ describe('M12 history diagnosis and safe comparisons', () => {
 
   it('drops a delayed history response after switching to a different workflow', async () => {
     setPersistedWorkflow();
-    let resolveOld!: (runs: ExecutionRun[]) => void;
-    const fetchHistory = vi.spyOn(api, 'listExecutions').mockImplementation((id) => {
+    let resolveOld!: (page: { runs: ExecutionRun[]; nextCursor: string | null }) => void;
+    const fetchHistory = vi.spyOn(api, 'listExecutionHistoryPage').mockImplementation((id) => {
       if (id === 'workflow_1') return new Promise((resolve) => { resolveOld = resolve; });
-      return Promise.resolve([]);
+      return Promise.resolve({ runs: [], nextCursor: null });
     });
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     await waitFor(() => expect(fetchHistory).toHaveBeenCalledWith('workflow_1'));
     useWorkflowStore.setState({ meta: { _id: 'workflow_2', name: 'Other workflow', isGeneratedByAI: false } });
     await waitFor(() => expect(fetchHistory).toHaveBeenCalledWith('workflow_2'));
-    resolveOld([failed]);
+    resolveOld({ runs: [failed], nextCursor: null });
     await waitFor(() => expect(useExecutionStore.getState().historyWorkflowId).toBe('workflow_2'));
     expect(useExecutionStore.getState().historyRuns).toEqual([]);
   });
