@@ -59,7 +59,7 @@ export function useExecutionSocket() {
       socket.emit('join:execution', runId);
 
       socket.on('node:status', (event: NodeStatusEvent) => {
-        if (event.runId !== runId) return;
+        if (event.runId !== runId || useExecutionStore.getState().currentRun?._id !== runId) return;
         updateNodeStatus(event.nodeId, {
           status: event.status,
           output: event.output,
@@ -69,18 +69,18 @@ export function useExecutionSocket() {
       });
 
       socket.on('execution:complete', async (event: ExecutionCompleteEvent) => {
-        if (event.runId !== runId) return;
+        if (event.runId !== runId || useExecutionStore.getState().currentRun?._id !== runId) return;
 
         // Fetch the final run to catch any events we might have missed
         // (e.g. if the socket connected slightly late)
         try {
           const finalRun = await api.getExecution(runId);
-          if (currentRunId.current === runId && useWorkflowStore.getState().meta?._id === finalRun.workflowId) {
+          if (currentRunId.current === runId && useExecutionStore.getState().currentRun?._id === runId && useWorkflowStore.getState().meta?._id === finalRun.workflowId) {
             setCurrentRun(finalRun);
           }
         } catch {
           // Fallback: just update the status
-          setRunStatus(event.status);
+          if (useExecutionStore.getState().currentRun?._id === runId) setRunStatus(event.status);
         }
       });
     },
