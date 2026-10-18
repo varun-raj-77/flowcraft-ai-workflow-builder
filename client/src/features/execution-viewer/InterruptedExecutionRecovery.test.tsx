@@ -59,7 +59,8 @@ describe('interrupted execution recovery controls', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /Acknowledge possible duplicate external side effects/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Start one new attempt' }));
     await waitFor(() => expect(useExecutionStore.getState().currentRun?._id).toBe('new-run'));
-    expect(request).toHaveBeenCalledExactlyOnceWith('source-1');
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith('source-1');
     expect(useExecutionStore.getState().activeInspectorTab).toBe('live');
     expect(useUIStore.getState().isExecutionPanelOpen).toBe(true);
   });
