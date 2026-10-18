@@ -101,6 +101,7 @@ function emitExecutionComplete(
 async function finalizeFailedRun(
   run: IExecutionRunDocument,
   message: string,
+  cause: 'preflight_failure' | 'engine_failure' = 'preflight_failure',
 ): Promise<IExecutionRunDocument> {
   const completedAt = new Date();
   run.status = 'failed';
@@ -118,7 +119,7 @@ async function finalizeFailedRun(
   }
   run.markModified('stepLogs');
   await persistExecutionSnapshot(run);
-  logExecutionOutcome('failed', 'preflight_failure');
+  logExecutionOutcome('failed', cause);
   emitExecutionComplete(run._id.toString(), 'failed', run.error);
   return run;
 }
@@ -314,7 +315,7 @@ export async function runExecution(
     // Recovery may already have committed a failure. A stale worker must never
     // overwrite that state, send a misleading event or run a following node.
     if (error instanceof ExecutionLeaseLostError || leaseLost) return run;
-    const failed = await finalizeFailedRun(run, 'Execution failed unexpectedly');
+    const failed = await finalizeFailedRun(run, 'Execution failed unexpectedly', 'engine_failure');
     return failed;
   } finally {
     if (timer) clearInterval(timer);
