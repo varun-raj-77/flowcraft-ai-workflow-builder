@@ -1,6 +1,7 @@
 import { type Request, type Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import * as engine from '../services/execution/executionEngine';
+import { getOwnedExecutionDiagnostics } from '../services/execution/executionObservability';
 import { simulateOwnedWorkflow } from '../services/execution/workflowSimulation';
 import { redactText } from '../utils/redact';
 
@@ -54,6 +55,13 @@ export const getExecution = asyncHandler(async (req: Request, res: Response) => 
 export const getExecutionRevisionProvenance = asyncHandler(async (req: Request, res: Response) => {
   const provenance = await engine.getExecutionRevisionProvenance(req.params.runId, req.userId!);
   res.json({ data: provenance });
+});
+
+// GET /api/executions/workflow/:workflowId/diagnostics
+// Owner-scoped, bounded, read-only and excludes raw execution payloads.
+export const getExecutionDiagnostics = asyncHandler(async (req: Request, res: Response) => {
+  const report = await getOwnedExecutionDiagnostics(req.params.workflowId, req.userId!);
+  res.status(200).json({ data: report });
 });
 
 // ── GET /api/executions/workflow/:workflowId ────────────────
