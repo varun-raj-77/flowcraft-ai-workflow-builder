@@ -68,3 +68,26 @@ describe('M14 workflow-scoped history paging state', () => {
     expect(useExecutionStore.getState().isRunning).toBe(true);
   });
 });
+
+describe('M15 filter-scoped browsing state', () => {
+  it('clears loaded results, comparison selection and cursors when changing filters', () => {
+    useExecutionStore.getState().setHistory('workflow-a', [run('one')], 'all-cursor');
+    useExecutionStore.getState().selectHistoricalRun('one');
+    useExecutionStore.getState().setHistoryLoading('workflow-a', 'failed');
+    const state = useExecutionStore.getState();
+    expect(state.historyFilter).toBe('failed');
+    expect(state.historyRuns).toEqual([]);
+    expect(state.historyNextCursor).toBeNull();
+    expect(state.selectedHistoricalRunId).toBeNull();
+    expect(state.historyStatus).toBe('loading');
+  });
+
+  it('does not change current execution or node states on filter reset', () => {
+    const active = { ...run('live'), status: 'running' as const };
+    useExecutionStore.getState().setCurrentRun(active);
+    useExecutionStore.getState().setHistory('workflow-a', [run('one')], 'a');
+    useExecutionStore.getState().setHistoryLoading('workflow-a', 'cancelled');
+    expect(useExecutionStore.getState().currentRun).toBe(active);
+    expect(useExecutionStore.getState().isRunning).toBe(true);
+  });
+});
