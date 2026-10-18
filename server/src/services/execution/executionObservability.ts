@@ -6,6 +6,34 @@ import { EXECUTION_INTERRUPTED_MESSAGE } from './executionRecovery';
 
 export const EXECUTION_DIAGNOSTICS_LIMIT = 50;
 export type RetryReadiness = 'ready' | 'not_ready' | 'unavailable';
+export interface HistoryIndexReadiness {
+  unfiltered: RetryReadiness;
+  filtered: RetryReadiness;
+}
+type HistoryIndexCatalogEntry = {
+  key?: Record<string, unknown>;
+  partialFilterExpression?: unknown;
+  sparse?: boolean;
+  hidden?: boolean;
+  collation?: unknown;
+};
+/** Recommended shapes only; never creates, drops or hints a production index. */
+export function assessHistoryIndexReadiness(
+  indexes: readonly HistoryIndexCatalogEntry[],
+): HistoryIndexReadiness {
+  const matches = (expected: Record<string, number>): boolean => indexes.some((index) => {
+    const key = index.key;
+    return !!key
+      && Object.keys(key).length === Object.keys(expected).length
+      && Object.entries(expected).every(([field, direction]) => key[field] === direction)
+      && index.partialFilterExpression === undefined && index.sparse !== true
+      && index.hidden !== true && index.collation === undefined;
+  });
+  return {
+    unfiltered: matches({ workflowId: 1, userId: 1, createdAt: -1, _id: -1 }) ? 'ready' : 'not_ready',
+    filtered: matches({ workflowId: 1, userId: 1, status: 1, createdAt: -1, _id: -1 }) ? 'ready' : 'not_ready',
+  };
+}
 
 /** Require the *exact* M10 single-field unique partial index. No schema writes. */
 export function isRetryIndexReady(indexes: readonly {
@@ -20,14 +48,29 @@ export function isRetryIndexReady(indexes: readonly {
     && index.partialFilterExpression?.retryOfRunId?.$type === 'objectId');
 }
 
-/** Fail closed on missing catalog access; never reveal names or DB exceptions. */
-export async function checkRetryReadiness(): Promise<RetryReadiness> {
+/** One read-only index-catalog lookup supplies both readiness summaries. */
+async function readExecutionIndexReadiness(): Promise<{
+  retryReadiness: RetryReadiness;
+  historyIndexReadiness: HistoryIndexReadiness;
+}> {
   try {
-    return isRetryIndexReady(await ExecutionRun.collection.indexes())
-      ? 'ready' : 'not_ready';
+    const indexes = await ExecutionRun.collection.indexes();
+    return {
+      retryReadiness: isRetryIndexReady(indexes) ? 'ready' : 'not_ready',
+      historyIndexReadiness: assessHistoryIndexReadiness(indexes),
+    };
   } catch {
-    return 'unavailable';
+    // Do not expose collection/index names, database errors or connection strings.
+    return {
+      retryReadiness: 'unavailable',
+      historyIndexReadiness: { unfiltered: 'unavailable', filtered: 'unavailable' },
+    };
   }
+}
+
+/** Existing M10 retry safety guard remains unchanged in behavior. */
+export async function checkRetryReadiness(): Promise<RetryReadiness> {
+  return (await readExecutionIndexReadiness()).retryReadiness;
 }
 
 type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
@@ -55,6 +98,7 @@ export interface ExecutionDiagnostics {
   };
   averageTerminalDurationMs: number | null;
   retryReadiness: RetryReadiness;
+  historyIndexReadiness: HistoryIndexReadiness;
 }
 
 /**
@@ -119,7 +163,7 @@ export async function getOwnedExecutionDiagnostics(
     .limit(EXECUTION_DIAGNOSTICS_LIMIT)
     .select('status error retryOfRunId startedAt completedAt leaseExpiresAt')
     .lean() as unknown as DiagnosticRow[];
-  return { ...summarizeExecutionRows(rows, now), retryReadiness: await checkRetryReadiness() };
+  return { ...summarizeExecutionRows(rows, now), ...await readExecutionIndexReadiness() };
 }
 
 /** Fixed vocabulary only: NEVER pass user-created text into an operational event. */
