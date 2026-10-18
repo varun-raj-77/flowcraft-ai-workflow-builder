@@ -7,7 +7,7 @@ import { WorkflowRevision } from '../../models/WorkflowRevision.model';
 import { normalizeAndValidateWorkflowGraph, type WorkflowDefinition } from '../workflowDefinition';
 import { verifyWorkflowRevisionIntegrity } from '../workflowRevisionIntegrity';
 import { findSkippedNodes, topologicalSort } from './dagUtils';
-import { buildExecutionInputs, type ExecutionContext } from './templateEngine';
+import { buildExecutionInputs, normalizeTransformOutput, type ExecutionContext } from './templateEngine';
 import { executeIsolatedScript, IsolatedScriptError } from './executors/isolatedScriptRunner';
 
 const mockValue = z.record(z.unknown());
@@ -30,7 +30,7 @@ export interface SimulationStep {
   nodeId: string;
   nodeType: string;
   status: 'simulated' | 'mocked' | 'skipped' | 'failed';
-  output?: Record<string, unknown>;
+  output?: Record<string, unknown> | unknown[];
   error?: string;
 }
 export interface SimulationAssertion {
@@ -71,9 +71,9 @@ function readPath(value: unknown, path: string): unknown {
   return current;
 }
 
-/** Resolve only data paths. No template functions, evaluation or prototype traversal. */
+/** Resolve production-compatible simple data paths only. Never evaluate code or follow prototypes. */
 function safeTemplate(template: string, outputs: Map<string, Record<string, unknown>>): string {
-  return template.replace(/\{\{([^{}]{1,160})\}\}/g, (_match, raw: string) => {
+  return template.replace(/\{\{(.+?)\}\}/g, (_match, raw: string) => {
     const path = raw.trim();
     if (!isSafePath(path)) return '';
     const [root, ...rest] = path.split('.');
@@ -294,9 +294,9 @@ export async function simulateDefinitionIsolated(
         case 'transform': {
           const code = String(config.transformCode || 'return input');
           const value = await executeIsolatedScript('transform', code, buildExecutionInputs(context));
-          output = value !== null && typeof value === 'object' && !Array.isArray(value)
-            ? value as Record<string, unknown>
-            : { data: value };
+          // The production runner preserves arrays as direct outputs. Match its
+          // exact result shape without invoking production executors or network.
+          output = normalizeTransformOutput(value);
           break;
         }
         case 'condition': {
