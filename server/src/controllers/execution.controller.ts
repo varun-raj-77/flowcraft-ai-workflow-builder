@@ -3,7 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import * as engine from '../services/execution/executionEngine';
 import { getOwnedExecutionDiagnostics } from '../services/execution/executionObservability';
 import { simulateOwnedWorkflow } from '../services/execution/workflowSimulation';
-import { redactText } from '../utils/redact';
+
 
 // ── POST /api/executions/:workflowId/run ────────────────────
 
@@ -16,8 +16,8 @@ export const runWorkflow = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json({ data: run });
 
   // Execute async — the engine emits socket events as it processes each node
-  engine.runExecution(run).catch((err) => {
-    console.error(`[execution] Unhandled error for run ${run._id}:`, redactText(err instanceof Error ? err.message : String(err)));
+  engine.runExecution(run).catch(() => {
+    console.warn(JSON.stringify({ event: 'execution_processing_failed' }));
   });
 });
 
