@@ -32,6 +32,9 @@ jobs:
             client/package-lock.json
             server/package-lock.json
 
+      - name: Test manual production smoke harness (offline, no network)
+        run: node --test .github/scripts/read-only-production-smoke.test.mjs
+
       - name: Install root dependencies
         run: npm ci
 
