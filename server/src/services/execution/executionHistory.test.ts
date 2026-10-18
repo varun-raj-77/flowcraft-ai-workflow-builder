@@ -7,7 +7,7 @@ vi.mock('../../models/ExecutionRun.model', () => ({ ExecutionRun: { find: mocks.
 
 import {
   EXECUTION_HISTORY_PAGE_SIZE,
-  encodeHistoryCursor, getOwnedExecutionHistoryPage, parseHistoryCursor, parseHistoryLimit,
+  encodeHistoryCursor, getOwnedExecutionHistoryPage, parseHistoryCursor, parseHistoryLimit, parseHistoryStatus,
 } from './executionHistory';
 
 const workflowId = '507f1f77bcf86cd799439011';
@@ -132,5 +132,71 @@ describe('M14 authenticated keyset history paging', () => {
     mockRows([record(1)]);
     const report = await getOwnedExecutionHistoryPage(workflowId, userId);
     expect(JSON.stringify(report)).not.toMatch(/leaseOwner|leaseExpiresAt|leaseHeartbeatAt/);
+  });
+});
+
+describe('M15 tenant-safe server-filtered execution history', () => {
+  it('accepts only an exact status enum and defaults to all', () => {
+    expect(parseHistoryStatus(undefined)).toBe('all');
+    for (const status of ['all','running','completed','failed','cancelled']) {
+      expect(parseHistoryStatus(status)).toBe(status);
+    }
+    for (const invalid of ['', 'FAiled', 'pending', ['failed'], { $ne: 'completed' }, 1, null, 'failed ']) {
+      expect(() => parseHistoryStatus(invalid)).toThrowError('Invalid execution history status.');
+    }
+  });
+
+  it('binds filtered page cursors to the exact selected status without exposing data', () => {
+    const first = record(51);
+    const token = encodeHistoryCursor(first, 'failed');
+    expect(parseHistoryCursor(token, 'failed')?.id.toString()).toBe(first._id.toString());
+    expect(token).not.toMatch(/owner|secret/);
+    for (const different of ['completed','running','cancelled','all'] as const) {
+      expect(() => parseHistoryCursor(token, different)).toThrowError('Invalid execution history cursor.');
+    }
+    const oldUnfiltered = encodeHistoryCursor(first);
+    expect(() => parseHistoryCursor(oldUnfiltered, 'failed')).toThrowError('Invalid execution history cursor.');
+    expect(parseHistoryCursor(oldUnfiltered, 'all')?.id.toString()).toBe(first._id.toString());
+  });
+
+  it('scopes filtered queries by owner and status before applying keyset bounds', async () => {
+    const anchor = record(71);
+    const token = encodeHistoryCursor(anchor, 'failed');
+    const q = mockRows([record(70)]);
+    const page = await getOwnedExecutionHistoryPage(workflowId, userId,
+      { status: 'failed', cursor: token, limit: '3' });
+    expect(page.runs).toHaveLength(1);
+    expect(page.nextCursor).toBeNull();
+    expect(q.limit).toHaveBeenCalledWith(4);
+    expect(mocks.find).toHaveBeenCalledWith({ workflowId, userId, status: 'failed',
+      $or: [{ createdAt: { $lt: anchor.createdAt } },
+        { createdAt: anchor.createdAt, _id: { $lt: anchor._id } }] });
+  });
+
+  it('only issues a next-page cursor for the current status', async () => {
+    const q = mockRows([record(11), record(10)]);
+    const page = await getOwnedExecutionHistoryPage(workflowId, userId, { status: 'failed', limit: '1' });
+    expect(q.limit).toHaveBeenCalledWith(2);
+    expect(page.runs).toHaveLength(1);
+    expect(parseHistoryCursor(page.nextCursor, 'failed')?.id.toString()).toBe(record(11)._id.toString());
+    expect(() => parseHistoryCursor(page.nextCursor, 'completed')).toThrow();
+  });
+
+  it('validates invalid status and filter-mismatched cursors before ownership DB reads', async () => {
+    const token = encodeHistoryCursor(record(9), 'failed');
+    await expect(getOwnedExecutionHistoryPage(workflowId, userId, { status: { $ne: 'failed' } }))
+      .rejects.toMatchObject({ statusCode: 400, code: 'INVALID_HISTORY_STATUS' });
+    await expect(getOwnedExecutionHistoryPage(workflowId, userId, { status: 'completed', cursor: token }))
+      .rejects.toMatchObject({ statusCode: 400, code: 'INVALID_HISTORY_CURSOR' });
+    expect(mocks.exists).not.toHaveBeenCalled();
+    expect(mocks.find).not.toHaveBeenCalled();
+  });
+
+  it('refuses cross-tenant history even with a valid matching filtered cursor', async () => {
+    mocks.exists.mockResolvedValueOnce(null);
+    const token = encodeHistoryCursor(record(91), 'failed');
+    await expect(getOwnedExecutionHistoryPage(workflowId, 'foreign-account', { status: 'failed', cursor: token }))
+      .rejects.toMatchObject({ statusCode: 404, code: 'WORKFLOW_NOT_FOUND' });
+    expect(mocks.find).not.toHaveBeenCalled();
   });
 });
