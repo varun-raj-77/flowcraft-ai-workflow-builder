@@ -271,6 +271,34 @@ test.describe('FlowCraft critical journeys', () => {
     await expect(page.getByText('Comparing v1 → v2')).toBeVisible();
   });
 
+  test('loads older execution history pages and preserves comparison baseline', async ({ page }) => {
+    const workflowId = 'workflow-m14-history';
+    const workflow = executableWorkflow(workflowId);
+    const records = Array.from({ length: 25 }, (_, i) => ({
+      _id: `older-run-${i}`, workflowId, userId: 'user-e2e',
+      status: 'completed', triggerType: 'manual',
+      startedAt: '2026-10-18T12:00:00.000Z',
+      completedAt: '2026-10-18T12:00:01.000Z',
+      createdAt: '2026-10-18T12:00:00.000Z',
+      updatedAt: '2026-10-18T12:00:01.000Z',
+      stepLogs: [], executionOrder: [],
+    }));
+    await installMockApi(page, { workflows: [workflow], executionState: new Map([[workflowId, records]]) });
+    await page.goto('/editor/' + workflowId);
+    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    const inspector = page.getByRole('region', { name: 'Execution Inspector', exact: true });
+    await inspector.getByRole('tab', { name: 'History' }).click();
+    await expect(inspector.getByText(/20 loaded executions/)).toBeVisible();
+    const baseline = inspector.getByRole('button', { name: 'Set baseline for execution older-run-0' });
+    await baseline.click();
+    await expect(baseline).toHaveAttribute('aria-pressed', 'true');
+    await inspector.getByRole('button', { name: 'Load older runs' }).click();
+    await expect(inspector.getByText(/26 loaded executions/)).toBeVisible();
+    await expect(inspector.getByRole('button', { name: 'Set baseline for execution older-run-24' })).toBeVisible();
+    await expect(baseline).toHaveAttribute('aria-pressed', 'true');
+    await expect(inspector.getByRole('button', { name: 'Load older runs' })).toHaveCount(0);
+  });
+
   test('cancels and confirms workflow deletion', async ({ page }) => {
     const workflow = executableWorkflow();
     await installMockApi(page, { workflows: [workflow] });
