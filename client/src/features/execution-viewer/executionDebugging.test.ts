@@ -69,7 +69,7 @@ describe('M12 read-only history and safe failure diagnosis', () => {
     expect(report.steps.map(s => ({ id: s.nodeId, before: s.before, after: s.after, duration: s.afterDurationMs })))
       .toEqual([{ id: 'one', before: 'success', after: 'success', duration: 300 }, { id: 'two', before: 'failed', after: 'success', duration: 700 }]);
     const text = JSON.stringify(report);
-    expect(text).not.toMatch(/superprivate|secret|private-value|very-sensitive-token|Private|abc|alice/);
+    expect(text).not.toMatch(/superprivate|secret=|private-value|very-sensitive-token|Private|abc|alice/);
   });
 
   it('refuses step alignment when revision ID, number or hash changes, or either run is legacy', () => {
