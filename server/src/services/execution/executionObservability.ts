@@ -23,9 +23,11 @@ export function assessHistoryIndexReadiness(
 ): HistoryIndexReadiness {
   const matches = (expected: Record<string, number>): boolean => indexes.some((index) => {
     const key = index.key;
-    return !!key
-      && Object.keys(key).length === Object.keys(expected).length
-      && Object.entries(expected).every(([field, direction]) => key[field] === direction)
+    const expectedEntries = Object.entries(expected);
+    const actualEntries = key ? Object.entries(key) : [];
+    return actualEntries.length === expectedEntries.length
+      && actualEntries.every(([field, direction], i) =>
+        field === expectedEntries[i][0] && direction === expectedEntries[i][1])
       && index.partialFilterExpression === undefined && index.sparse !== true
       && index.hidden !== true && index.collation === undefined;
   });
