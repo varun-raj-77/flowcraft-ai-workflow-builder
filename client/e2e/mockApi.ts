@@ -638,11 +638,13 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     const executionPageMatch = path.match(/^\/executions\/workflow\/([^/]+)\/page$/);
     if (executionPageMatch && method === 'GET') {
       const all = executions.get(executionPageMatch[1]) ?? [];
+      const status = url.searchParams.get('status');
+      const scoped = status && status !== 'all' ? all.filter((run) => run.status === status) : all;
       const cursor = url.searchParams.get('cursor');
       const start = cursor && /^e2e:\d+$/.test(cursor) ? Number(cursor.slice(4)) : 0;
       const pageSize = 20;
-      const runs = all.slice(start, start + pageSize);
-      const nextCursor = start + pageSize < all.length ? `e2e:${start + pageSize}` : null;
+      const runs = scoped.slice(start, start + pageSize);
+      const nextCursor = start + pageSize < scoped.length ? `e2e:${start + pageSize}` : null;
       await json(route, 200, { data: { runs, nextCursor } });
       return;
     }

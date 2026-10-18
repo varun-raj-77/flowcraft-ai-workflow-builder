@@ -32,7 +32,8 @@ beforeEach(() => {
   vi.restoreAllMocks();
   useExecutionStore.setState({
     currentRun: liveRun, isRunning: false, lastError: null, historyRuns: [], historyWorkflowId: null, selectedHistoricalRunId: null,
-    historyStatus: 'idle', historyError: null, selectedStepNodeId: null, activeInspectorTab: 'live',
+    historyStatus: 'idle', historyError: null, historyFilter: 'all', historyNextCursor: null, historyMoreStatus: 'idle',
+    historyMoreError: null, historyCapReached: false, selectedStepNodeId: null, activeInspectorTab: 'live',
   });
   useWorkflowStore.setState({ meta: null, nodes: [], edges: [], isDirty: false });
   window.localStorage.clear();
@@ -216,18 +217,26 @@ describe('M12 history diagnosis and safe comparisons', () => {
   const failed = { ...historicalRun, ...sameRevision, _id: 'm12-failed' };
   const success = { ...liveRun, ...sameRevision, _id: 'm12-success' };
 
-  it('filters the locally loaded 20-run history and shows a useful empty filter state', async () => {
+  it('retrieves matching statuses from the server instead of locally filtering the first 20 runs', async () => {
     setPersistedWorkflow();
-    const fetchHistory = vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [failed, success], nextCursor: null });
+    const fetchHistory = vi.spyOn(api, 'listExecutionHistoryPage')
+      .mockImplementation(async (_id, _cursor, status = 'all') => ({
+        runs: status === 'completed' ? [success] : status === 'cancelled' ? [] : [failed, success],
+        nextCursor: null,
+      }));
+    const live = useExecutionStore.getState().currentRun;
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     await screen.findByRole('button', { name: 'Set baseline for execution m12-failed' });
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter history by status' }), { target: { value: 'completed' } });
-    expect(screen.getByRole('button', { name: 'Set baseline for execution m12-success' })).toBeTruthy();
+    await screen.findByRole('button', { name: 'Set baseline for execution m12-success' });
     expect(screen.queryByRole('button', { name: 'Set baseline for execution m12-failed' })).toBeNull();
+    expect(fetchHistory).toHaveBeenCalledWith('workflow_1', null, 'completed');
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter history by status' }), { target: { value: 'cancelled' } });
-    expect(screen.getByText(/No runs in the loaded history match this status/)).toBeTruthy();
-    expect(fetchHistory).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/No cancelled executions found/)).toBeTruthy();
+    expect(fetchHistory).toHaveBeenCalledWith('workflow_1', null, 'cancelled');
+    expect(fetchHistory).toHaveBeenCalledTimes(3);
+    expect(useExecutionStore.getState().currentRun).toBe(live);
   });
 
   it('compares two runs with the same verified revision without changing execution state or revealing payloads', async () => {
@@ -285,9 +294,9 @@ describe('M12 history diagnosis and safe comparisons', () => {
     });
     render(<ExecutionPanel />);
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
-    await waitFor(() => expect(fetchHistory).toHaveBeenCalledWith('workflow_1'));
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledWith('workflow_1', null, 'all'));
     useWorkflowStore.setState({ meta: { _id: 'workflow_2', name: 'Other workflow', isGeneratedByAI: false } });
-    await waitFor(() => expect(fetchHistory).toHaveBeenCalledWith('workflow_2'));
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledWith('workflow_2', null, 'all'));
     resolveOld({ runs: [failed], nextCursor: null });
     await waitFor(() => expect(useExecutionStore.getState().historyWorkflowId).toBe('workflow_2'));
     expect(useExecutionStore.getState().historyRuns).toEqual([]);
@@ -310,7 +319,7 @@ describe('M14 paginated execution inspector', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Set baseline for execution new-0' }));
     fireEvent.click(screen.getByRole('button', { name: 'Load older runs' }));
     await screen.findByRole('button', { name: 'Set baseline for execution oldest-21' });
-    expect(request).toHaveBeenNthCalledWith(2, 'workflow_1', 'opaque-cursor');
+    expect(request).toHaveBeenNthCalledWith(2, 'workflow_1', 'opaque-cursor', 'all');
     expect(screen.getByText(/21 loaded executions/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Set baseline for execution new-0' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByRole('button', { name: 'Load older runs' })).toBeNull();
@@ -350,9 +359,32 @@ describe('M14 paginated execution inspector', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load older runs' }));
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     useWorkflowStore.setState({ meta: { _id: 'workflow_2', name: 'Other', isGeneratedByAI: false } });
-    await waitFor(() => expect(request).toHaveBeenCalledWith('workflow_2'));
+    await waitFor(() => expect(request).toHaveBeenCalledWith('workflow_2', null, 'all'));
     resolveOlder({ runs: [{ ...historicalRun, _id: 'foreign-old' }], nextCursor: null });
     await waitFor(() => expect(useExecutionStore.getState().historyWorkflowId).toBe('workflow_2'));
     expect(useExecutionStore.getState().historyRuns).toEqual([]);
   });
+});
+
+describe('M15 status-filtered execution history races', () => {
+  it('discards delayed results from an old filter after the user switches again', async () => {
+    setPersistedWorkflow();
+    let resolveFailed!: (page: { runs: ExecutionRun[]; nextCursor: string | null }) => void;
+    const apiMock = vi.spyOn(api, 'listExecutionHistoryPage').mockImplementation((_id, _cursor, status = 'all') => {
+      if (status === 'failed') return new Promise((resolve) => { resolveFailed = resolve; });
+      return Promise.resolve({ runs: status === 'completed' ? [liveRun] : [historicalRun], nextCursor: null });
+    });
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution history_run' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter history by status' }), { target: { value: 'failed' } });
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('workflow_1', null, 'failed'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter history by status' }), { target: { value: 'completed' } });
+    await screen.findByRole('button', { name: 'Set baseline for execution live_run' });
+    resolveFailed({ runs: [historicalRun], nextCursor: 'stale' });
+    await waitFor(() => expect(useExecutionStore.getState().historyRuns.map((run) => run._id)).toEqual(['live_run']));
+    expect(useExecutionStore.getState().historyFilter).toBe('completed');
+    expect(useExecutionStore.getState().historyNextCursor).toBeNull();
+  });
+
 });

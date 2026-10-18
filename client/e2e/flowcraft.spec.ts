@@ -276,7 +276,7 @@ test.describe('FlowCraft critical journeys', () => {
     const workflow = executableWorkflow(workflowId);
     const records = Array.from({ length: 25 }, (_, i) => ({
       _id: `older-run-${i}`, workflowId, userId: 'user-e2e',
-      status: 'completed', triggerType: 'manual',
+      status: i === 24 ? 'failed' : 'completed', triggerType: 'manual',
       startedAt: '2026-10-18T12:00:00.000Z',
       completedAt: '2026-10-18T12:00:01.000Z',
       createdAt: '2026-10-18T12:00:00.000Z',
@@ -297,6 +297,10 @@ test.describe('FlowCraft critical journeys', () => {
     await expect(inspector.getByRole('button', { name: 'Set baseline for execution older-run-24' })).toBeVisible();
     await expect(baseline).toHaveAttribute('aria-pressed', 'true');
     await expect(inspector.getByRole('button', { name: 'Load older runs' })).toHaveCount(0);
+    await inspector.getByRole('combobox', { name: 'Filter history by status' }).selectOption('failed');
+    await expect(inspector.getByText(/1 loaded executions/)).toBeVisible();
+    await expect(inspector.getByRole('button', { name: 'Set baseline for execution older-run-24' })).toBeVisible();
+    await expect(inspector.getByRole('button', { name: 'Set baseline for execution older-run-0' })).toHaveCount(0);
   });
 
   test('cancels and confirms workflow deletion', async ({ page }) => {

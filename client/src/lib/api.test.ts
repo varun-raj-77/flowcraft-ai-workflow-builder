@@ -105,6 +105,11 @@ describe('shared API client', () => {
     expect(request).toHaveBeenLastCalledWith(
       '/api/executions/workflow/workflow-1/page', expect.any(Object),
     );
+    await listExecutionHistoryPage('workflow-1', 'v2cursor', 'failed');
+    expect(request).toHaveBeenLastCalledWith(
+      '/api/executions/workflow/workflow-1/page?cursor=v2cursor&status=failed',
+      expect.objectContaining({ credentials: 'include', cache: 'no-store' }),
+    );
   });
 
   it('sends expectedRevision when restoring a historical revision as new', async () => {

@@ -2,6 +2,7 @@ import type {
   Workflow,
   WorkflowSummary,
   ExecutionRun,
+  ExecutionStatus,
   ExecutionHistoryPage,
   GenerationMetadata,
   RevisionHistoryResponse,
@@ -244,9 +245,13 @@ export async function getExecutionRevisionProvenance(
 export async function listExecutionHistoryPage(
   workflowId: string,
   cursor?: string | null,
+  status: 'all' | ExecutionStatus = 'all',
 ): Promise<ExecutionHistoryPage> {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-  return request<ExecutionHistoryPage>(`/executions/workflow/${workflowId}/page${query}`);
+  const params = new URLSearchParams();
+  if (cursor) params.set('cursor', cursor);
+  if (status !== 'all') params.set('status', status);
+  const query = params.toString();
+  return request<ExecutionHistoryPage>(`/executions/workflow/${workflowId}/page${query ? `?${query}` : ''}`);
 }
 
 /** List execution history for a workflow. */

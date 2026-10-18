@@ -12,6 +12,7 @@ interface ExecutionState {
   lastError: string | null;
   historyRuns: ExecutionRun[];
   historyWorkflowId: string | null;
+  historyFilter: 'all' | ExecutionStatus;
   selectedHistoricalRunId: string | null;
   historyStatus: 'idle' | 'loading' | 'error';
   historyError: string | null;
@@ -30,7 +31,7 @@ interface ExecutionState {
   setRunStatus: (status: ExecutionStatus) => void;
   clearExecution: () => void;
   setLastError: (error: string | null) => void;
-  setHistoryLoading: (workflowId: string) => void;
+  setHistoryLoading: (workflowId: string, filter?: 'all' | ExecutionStatus) => void;
   setHistory: (workflowId: string, runs: ExecutionRun[], nextCursor?: string | null) => void;
   setHistoryMoreLoading: (workflowId: string, cursor: string) => void;
   appendHistoryPage: (workflowId: string, cursor: string, runs: ExecutionRun[], nextCursor: string | null) => void;
@@ -50,6 +51,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
   lastError: null,
   historyRuns: [],
   historyWorkflowId: null,
+  historyFilter: 'all',
   selectedHistoricalRunId: null,
   historyStatus: 'idle',
   historyError: null,
@@ -95,16 +97,22 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
 
   setLastError: (lastError) => set({ lastError }),
 
-  setHistoryLoading: (historyWorkflowId) =>
-    set((state) => ({
-      historyWorkflowId,
-      historyRuns: state.historyWorkflowId === historyWorkflowId ? state.historyRuns : [],
-      selectedHistoricalRunId: state.historyWorkflowId === historyWorkflowId ? state.selectedHistoricalRunId : null,
-      historyStatus: 'loading',
-      historyError: null,
-      historyMoreStatus: 'idle',
-      historyMoreError: null,
-    })),
+  setHistoryLoading: (historyWorkflowId, historyFilter = 'all') =>
+    set((state) => {
+      const changed = state.historyWorkflowId !== historyWorkflowId || state.historyFilter !== historyFilter;
+      return {
+        historyWorkflowId,
+        historyFilter,
+        historyRuns: changed ? [] : state.historyRuns,
+        selectedHistoricalRunId: changed ? null : state.selectedHistoricalRunId,
+        historyNextCursor: changed ? null : state.historyNextCursor,
+        historyCapReached: changed ? false : state.historyCapReached,
+        historyStatus: 'loading',
+        historyError: null,
+        historyMoreStatus: 'idle',
+        historyMoreError: null,
+      };
+    }),
 
   setHistory: (historyWorkflowId, incomingRuns, nextCursor = null) =>
     set((state) => {
@@ -160,6 +168,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
   clearHistory: () => set({
     historyRuns: [],
     historyWorkflowId: null,
+    historyFilter: 'all',
     selectedHistoricalRunId: null,
     historyStatus: 'idle',
     historyError: null,
