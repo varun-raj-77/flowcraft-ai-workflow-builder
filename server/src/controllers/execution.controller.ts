@@ -2,6 +2,7 @@ import { type Request, type Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import * as engine from '../services/execution/executionEngine';
 import { getOwnedExecutionDiagnostics } from '../services/execution/executionObservability';
+import { getOwnedExecutionHistoryPage } from '../services/execution/executionHistory';
 import { simulateOwnedWorkflow } from '../services/execution/workflowSimulation';
 
 
@@ -62,6 +63,14 @@ export const getExecutionRevisionProvenance = asyncHandler(async (req: Request, 
 export const getExecutionDiagnostics = asyncHandler(async (req: Request, res: Response) => {
   const report = await getOwnedExecutionDiagnostics(req.params.workflowId, req.userId!);
   res.status(200).json({ data: report });
+});
+
+// GET /api/executions/workflow/:workflowId/page — owner-verified cursor page
+export const getExecutionHistoryPage = asyncHandler(async (req: Request, res: Response) => {
+  const page = await getOwnedExecutionHistoryPage(req.params.workflowId, req.userId!, {
+    limit: req.query.limit, cursor: req.query.cursor,
+  });
+  res.status(200).json({ data: page });
 });
 
 // ── GET /api/executions/workflow/:workflowId ────────────────

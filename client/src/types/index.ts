@@ -39,4 +39,5 @@ export type {
   ExecutionRun,
   TransformDiagnostic,
   ExecutionRevisionProvenance,
+  ExecutionHistoryPage,
 } from './execution';

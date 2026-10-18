@@ -632,6 +632,21 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       return;
     }
 
+    // M14: simulate deterministic, read-only keyset pages for browser journeys.
+    // The fixture uses offset cursors because its synthetic IDs aren't Mongo ObjectIds;
+    // strict production cursor semantics are tested in executionHistory.test.ts.
+    const executionPageMatch = path.match(/^\/executions\/workflow\/([^/]+)\/page$/);
+    if (executionPageMatch && method === 'GET') {
+      const all = executions.get(executionPageMatch[1]) ?? [];
+      const cursor = url.searchParams.get('cursor');
+      const start = cursor && /^e2e:\d+$/.test(cursor) ? Number(cursor.slice(4)) : 0;
+      const pageSize = 20;
+      const runs = all.slice(start, start + pageSize);
+      const nextCursor = start + pageSize < all.length ? `e2e:${start + pageSize}` : null;
+      await json(route, 200, { data: { runs, nextCursor } });
+      return;
+    }
+
     const executionHistoryMatch = path.match(/^\/executions\/workflow\/([^/]+)$/);
     if (executionHistoryMatch && method === 'GET') {
       await json(route, 200, { data: executions.get(executionHistoryMatch[1]) ?? [] });

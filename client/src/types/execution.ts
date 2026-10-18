@@ -74,3 +74,9 @@ export interface ExecutionRevisionProvenance {
   canCompare: boolean;
   message?: string;
 }
+
+/** M14: bounded, owner-scoped immutable-history page. */
+export interface ExecutionHistoryPage {
+  runs: ExecutionRun[];
+  nextCursor: string | null;
+}

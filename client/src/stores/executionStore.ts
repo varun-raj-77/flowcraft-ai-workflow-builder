@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import type { ExecutionRun, StepLog, ExecutionStatus } from '@/types';
 import type { InspectorTab } from '@/features/execution-viewer/executionInspector';
 
+/** Prevent unbounded in-memory payload accumulation while browsing historical runs. */
+export const MAX_LOADED_HISTORY_RUNS = 200;
+
 interface ExecutionState {
   // State
   currentRun: ExecutionRun | null;
@@ -12,6 +15,10 @@ interface ExecutionState {
   selectedHistoricalRunId: string | null;
   historyStatus: 'idle' | 'loading' | 'error';
   historyError: string | null;
+  historyNextCursor: string | null;
+  historyMoreStatus: 'idle' | 'loading' | 'error';
+  historyMoreError: string | null;
+  historyCapReached: boolean;
   selectedStepNodeId: string | null;
   activeInspectorTab: InspectorTab;
   replayRunId: string | null;
@@ -24,7 +31,10 @@ interface ExecutionState {
   clearExecution: () => void;
   setLastError: (error: string | null) => void;
   setHistoryLoading: (workflowId: string) => void;
-  setHistory: (workflowId: string, runs: ExecutionRun[]) => void;
+  setHistory: (workflowId: string, runs: ExecutionRun[], nextCursor?: string | null) => void;
+  setHistoryMoreLoading: (workflowId: string, cursor: string) => void;
+  appendHistoryPage: (workflowId: string, cursor: string, runs: ExecutionRun[], nextCursor: string | null) => void;
+  setHistoryMoreError: (workflowId: string, cursor: string, error: string) => void;
   setHistoryError: (workflowId: string, error: string) => void;
   clearHistory: () => void;
   selectHistoricalRun: (runId: string | null) => void;
@@ -43,6 +53,10 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
   selectedHistoricalRunId: null,
   historyStatus: 'idle',
   historyError: null,
+  historyNextCursor: null,
+  historyMoreStatus: 'idle',
+  historyMoreError: null,
+  historyCapReached: false,
   selectedStepNodeId: null,
   activeInspectorTab: 'live',
   replayRunId: null,
@@ -88,18 +102,58 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
       selectedHistoricalRunId: state.historyWorkflowId === historyWorkflowId ? state.selectedHistoricalRunId : null,
       historyStatus: 'loading',
       historyError: null,
+      historyMoreStatus: 'idle',
+      historyMoreError: null,
     })),
 
-  setHistory: (historyWorkflowId, historyRuns) =>
-    set((state) => ({
-      historyWorkflowId,
+  setHistory: (historyWorkflowId, incomingRuns, nextCursor = null) =>
+    set((state) => {
+      const historyRuns = incomingRuns.slice(0, MAX_LOADED_HISTORY_RUNS);
+      return {
+        historyWorkflowId,
+        historyRuns,
+        historyNextCursor: historyRuns.length >= MAX_LOADED_HISTORY_RUNS ? null : nextCursor,
+        historyCapReached: historyRuns.length >= MAX_LOADED_HISTORY_RUNS && nextCursor !== null,
+        historyStatus: 'idle',
+        historyError: null,
+        historyMoreStatus: 'idle',
+        historyMoreError: null,
+        selectedHistoricalRunId: state.selectedHistoricalRunId && historyRuns.some((run) => run._id === state.selectedHistoricalRunId)
+          ? state.selectedHistoricalRunId : null,
+      };
+    }),
+
+  setHistoryMoreLoading: (workflowId, cursor) => set((state) => {
+    if (state.historyWorkflowId !== workflowId || state.historyNextCursor !== cursor
+      || state.historyStatus !== 'idle' || state.historyMoreStatus === 'loading') return state;
+    return { historyMoreStatus: 'loading', historyMoreError: null };
+  }),
+
+  appendHistoryPage: (workflowId, cursor, runs, nextCursor) => set((state) => {
+    if (state.historyWorkflowId !== workflowId || state.historyNextCursor !== cursor
+      || state.historyMoreStatus !== 'loading') return state;
+    // An overlapping boundary row must not duplicate the run or reset selection.
+    const seen = new Set(state.historyRuns.map((run) => run._id));
+    const additions = runs.filter((run) => {
+      if (seen.has(run._id)) return false;
+      seen.add(run._id); return true;
+    });
+    const historyRuns = [...state.historyRuns, ...additions].slice(0, MAX_LOADED_HISTORY_RUNS);
+    const historyCapReached = historyRuns.length >= MAX_LOADED_HISTORY_RUNS && nextCursor !== null;
+    return {
       historyRuns,
-      historyStatus: 'idle',
-      historyError: null,
-      selectedHistoricalRunId: state.selectedHistoricalRunId && historyRuns.some((run) => run._id === state.selectedHistoricalRunId)
-        ? state.selectedHistoricalRunId
-        : null,
-    })),
+      historyNextCursor: historyCapReached ? null : nextCursor,
+      historyCapReached,
+      historyMoreStatus: 'idle',
+      historyMoreError: null,
+    };
+  }),
+
+  setHistoryMoreError: (workflowId, cursor, error) => set((state) =>
+    state.historyWorkflowId !== workflowId || state.historyNextCursor !== cursor
+      || state.historyMoreStatus !== 'loading'
+      ? state : { historyMoreStatus: 'error', historyMoreError: error },
+  ),
 
   setHistoryError: (historyWorkflowId, historyError) => set({ historyWorkflowId, historyStatus: 'error', historyError }),
 
@@ -109,6 +163,10 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
     selectedHistoricalRunId: null,
     historyStatus: 'idle',
     historyError: null,
+    historyNextCursor: null,
+    historyMoreStatus: 'idle',
+    historyMoreError: null,
+    historyCapReached: false,
     selectedStepNodeId: null,
     replayRunId: null,
     replayStepIndex: null,

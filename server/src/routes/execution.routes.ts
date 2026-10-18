@@ -48,6 +48,10 @@ router.get(
 );
 
 // GET    /api/executions/workflow/:workflowId → List executions for a workflow
+// M14: bounded, owner-scoped keyset pagination; legacy list remains compatible.
+const historyPageLimiter = createRateLimiter({ name: 'execution-history-page', windowMs: 60_000, max: 60 });
+router.get('/workflow/:workflowId/page', historyPageLimiter, controller.getExecutionHistoryPage);
+
 router.get(
   '/workflow/:workflowId',
   controller.listExecutions,
