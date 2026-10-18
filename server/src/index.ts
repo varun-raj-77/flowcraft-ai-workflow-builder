@@ -8,6 +8,7 @@ import { initializeSocket } from './config/socket';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler.middleware';
 import { requestContext } from './middleware/requestContext.middleware';
+import { startExecutionRecoveryMonitor } from './services/execution/executionRecovery';
 
 async function main() {
   const app = express();
@@ -47,6 +48,9 @@ async function main() {
   const PORT = Number(env.PORT) || 3001;
 
   httpServer.listen(PORT, () => {
+    // After MongoDB is connected and API is listening, begin bounded recovery.
+    // Recovery only touches expired M9-leased runs; it never reruns a workflow.
+    startExecutionRecoveryMonitor();
     console.log(`[server] FlowCraft API running on port ${env.PORT}`);
     console.log(`[server] Environment: ${env.NODE_ENV}`);
     console.log(`[server] Using Anthropic model: ${env.ANTHROPIC_MODEL}`);
