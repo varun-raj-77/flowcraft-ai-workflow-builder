@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { CanvasToolbar } from './CanvasToolbar';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
 import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
+import type { Node } from '@xyflow/react';
+import type { FlowNodeData } from '@/types';
 
 vi.mock('./hooks/useSaveWorkflow', () => ({ useSaveWorkflow: () => ({ save: vi.fn(), status: 'idle' }) }));
 vi.mock('./hooks/useRunWorkflow', () => ({ useRunWorkflow: () => ({ run: vi.fn(), isRunning: false }) }));
@@ -91,5 +93,71 @@ describe('CanvasToolbar', () => {
       expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true);
     }
     expect(screen.getByText('v2')).toBeTruthy();
+  });
+});
+
+
+describe('M13 searchable node navigation', () => {
+  const graphNodes: Node<FlowNodeData>[] = [
+    { id: 'one', type: 'transform', position: { x: 0, y: 0 }, data: { label: 'Parse Orders', nodeType: 'transform', config: { transformCode: 'return data' } } },
+    { id: 'two', type: 'api_call', position: { x: 100, y: 0 }, data: { label: 'Fetch Customers', nodeType: 'api_call', config: { url: 'https://example.test', method: 'GET' } } },
+  ];
+  beforeEach(() => {
+    useWorkflowStore.setState({ nodes: graphNodes, edges: [], isDirty: false,
+      meta: { _id: 'workflow-m13', name: 'Find demo', isGeneratedByAI: false },
+      undoStack: [], redoStack: [] });
+    useUIStore.setState({ selectedNodeId: null, isConfigPanelOpen: false, nodeFocusRequest: null });
+    useRevisionHistoryStore.getState().reset();
+    useRevisionComparisonStore.getState().reset();
+  });
+  it('finds an existing node by label and selects it without editing the graph', () => {
+    render(<CanvasToolbar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Find node' }));
+    const search = screen.getByRole('searchbox', { name: 'Search workflow nodes' });
+    fireEvent.change(search, { target: { value: 'customers' } });
+    expect(screen.getByRole('button', { name: /Fetch Customers/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Parse Orders/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Fetch Customers/ }));
+    const ui = useUIStore.getState();
+    expect(ui.selectedNodeId).toBe('two');
+    expect(ui.isConfigPanelOpen).toBe(true);
+    expect(ui.nodeFocusRequest).toMatchObject({ nodeId: 'two', workflowId: 'workflow-m13' });
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+    expect(useWorkflowStore.getState().undoStack).toHaveLength(0);
+  });
+  it('handles empty matches, Enter and Escape without changing execution data', () => {
+    render(<CanvasToolbar />);
+    fireEvent.click(screen.getByRole('button', { name: 'Find node' }));
+    const search = screen.getByRole('searchbox', { name: 'Search workflow nodes' });
+    fireEvent.change(search, { target: { value: 'does not exist' } });
+    expect(screen.getByText(/No matching nodes in this workflow/)).toBeTruthy();
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(useUIStore.getState().nodeFocusRequest).toBeNull();
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Find workflow node' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Find node' }));
+  });
+  it('opens Ctrl+K when not typing and cannot open in read-only revision mode', () => {
+    const { rerender } = render(<CanvasToolbar />);
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    expect(screen.getByRole('dialog', { name: 'Find workflow node' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    useRevisionHistoryStore.setState({ previewRevision: {
+      id: 'revision-old', workflowId: 'workflow-m13', revision: 1,
+      parentRevisionId: null, source: 'manual', definitionHash: '1'.repeat(64),
+      nodes: [], edges: [], createdAt: '2026-10-18T12:00:00Z',
+    } });
+    rerender(<CanvasToolbar />);
+    expect((screen.getByRole('button', { name: 'Find node' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    expect(screen.queryByRole('dialog', { name: 'Find workflow node' })).toBeNull();
+  });
+  it('focuses an invalid preflight node on the canvas rather than merely selecting its form', () => {
+    render(<CanvasToolbar />);
+    fireEvent.click(screen.getByRole('button', { name: /issues|warnings/ }));
+    const focus = screen.getAllByRole('button', { name: 'Focus' })[0];
+    fireEvent.click(focus);
+    expect(useUIStore.getState().nodeFocusRequest?.nodeId).toBeTruthy();
+    expect(useUIStore.getState().nodeFocusRequest?.workflowId).toBe('workflow-m13');
   });
 });

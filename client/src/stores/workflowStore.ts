@@ -13,6 +13,7 @@ import type { Workflow, WorkflowNode, WorkflowEdge, NodeType, FlowNodeData, Gene
 import { getDefaultConfig, getDefaultLabel } from '@/lib/defaultConfigs';
 import { generateId } from '@/lib/utils';
 import { hasCompleteGenerationMetadata } from '@/lib/workflowSavePayload';
+import { canConnectWorkflowNodes } from '@/features/workflow-canvas/nodeNavigation';
 
 // ============================================================
 // Conversion between our domain types and React Flow's types
@@ -222,24 +223,26 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   onConnect: (connection) => {
-    // Determine if source is a condition node to set label + conditionBranch
-    const sourceNode = get().nodes.find((n) => n.id === connection.source);
-    const isCondition = sourceNode?.data.nodeType === 'condition';
-
-    const newEdge: Edge = {
-      ...connection,
-      id: generateId('edge'),
-      type: 'smoothstep',
-      animated: false,
-      label: isCondition
-        ? connection.sourceHandle === 'condition_true' ? 'Yes' : 'No'
-        : undefined,
-      data: isCondition
-        ? { conditionBranch: connection.sourceHandle === 'condition_true' ? 'true' : 'false' }
-        : undefined,
-    };
-
-    set((state) => commitSnapshot(state, { nodes: state.nodes, edges: addEdge(newEdge, state.edges), meta: state.meta }));
+    // Keep the final mutation guard in the store, not just in React Flow:
+    // stale callbacks and keyboard interactions cannot introduce cycles.
+    set((state) => {
+      if (!canConnectWorkflowNodes(state.nodes, state.edges, connection)) return state;
+      const sourceNode = state.nodes.find((node) => node.id === connection.source);
+      const isCondition = sourceNode?.data.nodeType === 'condition';
+      const newEdge: Edge = {
+        ...connection,
+        id: generateId('edge'),
+        type: 'smoothstep',
+        animated: false,
+        label: isCondition ? connection.sourceHandle === 'condition_true' ? 'Yes' : 'No' : undefined,
+        data: isCondition
+          ? { conditionBranch: connection.sourceHandle === 'condition_true' ? 'true' : 'false' }
+          : undefined,
+      };
+      return commitSnapshot(state, {
+        nodes: state.nodes, edges: addEdge(newEdge, state.edges), meta: state.meta,
+      });
+    });
   },
 
   // ── Domain actions ──────────────────────────────────────────
