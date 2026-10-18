@@ -257,6 +257,25 @@ export async function retryInterruptedExecution(
   const existing = await ExecutionRun.findOne({ retryOfRunId: source._id, userId });
   if (existing) return { run: existing, created: false };
 
+  // Fail closed during first deployment or when schema auto-indexing is off.
+  // Without a verified *unique* index, simultaneous requests could create
+  // multiple full executions and duplicate irreversible external actions.
+  let indexReady = false;
+  try {
+    const indexes = await ExecutionRun.collection.indexes();
+    indexReady = indexes.some((index) =>
+      index.unique === true
+      && index.key?.retryOfRunId === 1
+      && Object.keys(index.key).length === 1
+      && index.partialFilterExpression?.retryOfRunId?.$type === 'objectId');
+  } catch {
+    // Transient index-read/DB errors must never fall back to unsafe writes.
+  }
+  if (!indexReady) {
+    throw new AppError(503, 'RETRY_INDEX_UNAVAILABLE',
+      'Safe retry is temporarily unavailable. Please try again after the retry index is ready.');
+  }
+
   try {
     const run = await startExecution(source.workflowId.toString(), userId, 'manual', sourceRunId);
     return { run, created: true };
