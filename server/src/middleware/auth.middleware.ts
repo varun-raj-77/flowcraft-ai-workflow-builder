@@ -47,7 +47,7 @@ function rejectAuthentication(
     event: 'authentication_failed',
     requestId: req.requestId,
     code,
-    path: req.path,
+    route: 'authentication',
   }));
   res.status(401).json({ error: { code, message } });
 }
