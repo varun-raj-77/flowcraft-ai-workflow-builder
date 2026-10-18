@@ -41,6 +41,8 @@ export interface StepLog {
 export interface ExecutionRun {
   _id: string;
   workflowId: string;
+  /** Set only on an explicit retry; the source execution is never resumed. */
+  retryOfRunId?: string;
   /** Absent only for legacy runs created before immutable revision pinning. */
   workflowRevisionId?: string;
   /** Absent only for legacy runs created before immutable revision pinning. */
