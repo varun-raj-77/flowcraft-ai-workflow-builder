@@ -11,6 +11,8 @@ import type { ExecutionRun, StepLog, StepStatus, TransformDiagnostic } from '@/t
 import { JsonViewer } from './JsonViewer';
 import { ExecutionProvenanceCard } from './ExecutionProvenanceCard';
 import { InterruptedExecutionRecovery } from './InterruptedExecutionRecovery';
+import { ExecutionDiagnosis, RunComparisonPanel } from './ExecutionDebuggingPanels';
+import { filterHistoryRuns, type HistoryStatusFilter } from './executionDebugging';
 import {
   INSPECTOR_TABS,
   type InspectorTab,
@@ -246,6 +248,7 @@ function TimelineView({ run, now }: { run: ExecutionRun | null; now: number }) {
     <div>
       <RunSummary run={run} now={now} />
       <InterruptedExecutionRecovery key={run._id} run={run} />
+      <ExecutionDiagnosis run={run} />
       <ExecutionInsights run={run} now={now} />
       <ReplayControl run={run} />
       <ol className="border-t border-zinc-100 dark:border-zinc-800">
@@ -311,6 +314,7 @@ function LiveView({ run, lastError, now }: { run: ExecutionRun | null; lastError
       )}
       <RunSummary run={run} now={now} />
       <InterruptedExecutionRecovery key={run._id} run={run} />
+      <ExecutionDiagnosis run={run} />
       <div className="border-t border-zinc-100 dark:border-zinc-800">
         {run.stepLogs.map((log) => <StepLogRow key={log.nodeId} log={log} />)}
       </div>
@@ -333,6 +337,18 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
   const clearHistory = useExecutionStore((state) => state.clearHistory);
   const requestInFlightForWorkflow = useRef<string | null>(null);
   const latestRequest = useRef(0);
+  const [statusFilter, setStatusFilter] = useState<HistoryStatusFilter>('all');
+  const [baselineId, setBaselineId] = useState<string | null>(null);
+  const [candidateId, setCandidateId] = useState<string | null>(null);
+  const filteredRuns = useMemo(() => filterHistoryRuns(historyRuns, statusFilter), [historyRuns, statusFilter]);
+  const baselineRun = historyWorkflowId === workflowId ? historyRuns.find((r) => r._id === baselineId) : null;
+  const candidateRun = historyWorkflowId === workflowId ? historyRuns.find((r) => r._id === candidateId) : null;
+
+  useEffect(() => {
+    setStatusFilter('all');
+    setBaselineId(null);
+    setCandidateId(null);
+  }, [workflowId]);
 
   const loadHistory = useCallback(async (force = false) => {
     if (!workflowId || requestInFlightForWorkflow.current === workflowId) return;
@@ -342,9 +358,9 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
     setHistoryLoading(workflowId);
     try {
       const runs = await api.listExecutions(workflowId);
-      if (requestId === latestRequest.current) setHistory(workflowId, runs);
+      if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId) setHistory(workflowId, runs);
     } catch (error) {
-      if (requestId === latestRequest.current) {
+      if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId) {
         setHistoryError(workflowId, api.getApiErrorMessage(error, 'Unable to load execution history. Please try again.'));
       }
     } finally {
@@ -378,14 +394,31 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
   return (
     <div>
       <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-2 dark:border-zinc-800">
-        <p className="text-[10px] text-zinc-400">Newest 20 executions</p>
+        <p className="text-[10px] text-zinc-400">Up to 20 most recent executions</p>
         <button type="button" onClick={() => void loadHistory(true)} disabled={historyStatus === 'loading'} className="text-xs font-medium text-zinc-700 hover:underline disabled:opacity-50 dark:text-zinc-300">Refresh</button>
       </div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
+        <label htmlFor="history-status-filter" className="text-[10px] text-[var(--text-muted)]">Status</label>
+        <select id="history-status-filter" aria-label="Filter history by status" value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value as HistoryStatusFilter)}
+          className="rounded border border-[var(--border-default)] bg-[var(--surface-base)] px-2 py-1 text-xs text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+          <option value="all">All</option>
+          <option value="completed">Completed</option>
+          <option value="failed">Failed</option>
+          <option value="running">Running</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        {baselineId && <button type="button" className="ml-auto text-[10px] text-violet-400 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+          onClick={() => { setBaselineId(null); setCandidateId(null); }}>Clear baseline</button>}
+      </div>
+      {baselineRun && candidateRun && <RunComparisonPanel baseline={baselineRun} candidate={candidateRun} onClear={() => { setBaselineId(null); setCandidateId(null); }} />}
       {historyRuns.length === 0 ? (
         <InspectorEmpty message="No executions have been recorded for this workflow." />
+      ) : filteredRuns.length === 0 ? (
+        <InspectorEmpty message="No runs in the loaded history match this status. Try another filter." />
       ) : (
         <ul>
-          {historyRuns.map((run) => {
+          {filteredRuns.map((run) => {
             const summary = getRunSummary(run, now);
             const selected = selectedHistoricalRunId === run._id;
             return (
@@ -405,6 +438,20 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
                   </span>
                   <span className="text-right text-[10px] tabular-nums text-zinc-400">{formatDuration(summary.totalDurationMs)}</span>
                 </button>
+                <div className="flex gap-2 px-4 pb-2">
+                  <button type="button" aria-label={`Set baseline for execution ${run._id}`}
+                    aria-pressed={baselineId === run._id}
+                    onClick={() => { setBaselineId(run._id); setCandidateId(null); }}
+                    className="rounded border border-[var(--border-default)] px-2 py-1 text-[10px] text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+                    {baselineId === run._id ? 'Baseline selected' : 'Use as baseline'}
+                  </button>
+                  {baselineId && baselineId !== run._id && <button type="button" aria-label={`Compare execution ${run._id} against baseline`}
+                    aria-pressed={candidateId === run._id}
+                    onClick={() => setCandidateId(run._id)}
+                    className="rounded border border-violet-500/40 px-2 py-1 text-[10px] text-violet-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+                    Compare
+                  </button>}
+                </div>
               </li>
             );
           })}

@@ -207,3 +207,89 @@ describe('ExecutionPanel', () => {
     expect(useUIStore.getState().isExecutionInspectorMaximized).toBe(false);
   });
 });
+
+describe('M12 history diagnosis and safe comparisons', () => {
+  const sameRevision = {
+    workflowRevision: 1, workflowRevisionId: 'revision-one',
+    definitionHash: 'a'.repeat(64),
+  };
+  const failed = { ...historicalRun, ...sameRevision, _id: 'm12-failed' };
+  const success = { ...liveRun, ...sameRevision, _id: 'm12-success' };
+
+  it('filters the locally loaded 20-run history and shows a useful empty filter state', async () => {
+    setPersistedWorkflow();
+    const fetchHistory = vi.spyOn(api, 'listExecutions').mockResolvedValue([failed, success]);
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution m12-failed' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter history by status' }), { target: { value: 'completed' } });
+    expect(screen.getByRole('button', { name: 'Set baseline for execution m12-success' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Set baseline for execution m12-failed' })).toBeNull();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter history by status' }), { target: { value: 'cancelled' } });
+    expect(screen.getByText(/No runs in the loaded history match this status/)).toBeTruthy();
+    expect(fetchHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('compares two runs with the same verified revision without changing execution state or revealing payloads', async () => {
+    setPersistedWorkflow();
+    vi.spyOn(api, 'listExecutions').mockResolvedValue([failed, success]);
+    const before = useExecutionStore.getState().currentRun;
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution m12-failed' });
+    fireEvent.click(screen.getByRole('button', { name: 'Set baseline for execution m12-failed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compare execution m12-success against baseline' }));
+    expect(screen.getByRole('region', { name: 'Run comparison' })).toBeTruthy();
+    expect(screen.getByRole('table', { name: 'Compared node states' })).toBeTruthy();
+    expect(screen.getByText(/Only step status and recorded duration are compared/)).toBeTruthy();
+    expect(screen.queryByText('hidden')).toBeNull();
+    expect(useExecutionStore.getState().currentRun).toBe(before);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear comparison' }));
+    expect(screen.queryByRole('region', { name: 'Run comparison' })).toBeNull();
+  });
+
+  it('prevents misleading node-level comparison across changed workflow revisions', async () => {
+    setPersistedWorkflow();
+    vi.spyOn(api, 'listExecutions').mockResolvedValue([failed, { ...success, definitionHash: 'b'.repeat(64) }]);
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution m12-failed' });
+    fireEvent.click(screen.getByRole('button', { name: 'Set baseline for execution m12-failed' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compare execution m12-success against baseline' }));
+    expect(screen.getByText(/do not share a verified identical pinned revision/i)).toBeTruthy();
+    expect(screen.queryByRole('table', { name: 'Compared node states' })).toBeNull();
+  });
+
+  it('renders diagnosis for a failure and focuses the failed step without running anything', () => {
+    useExecutionStore.setState({ currentRun: {
+      ...liveRun, status: 'failed', error: 'Sensitive password=private',
+      stepLogs: [{ ...liveRun.stepLogs[0], status: 'failed', error: 'Bearer private', output: undefined }],
+    } });
+    const retry = vi.spyOn(api, 'retryInterruptedExecution');
+    render(<ExecutionPanel />);
+    expect(screen.getByRole('region', { name: 'Execution diagnosis' })).toBeTruthy();
+    expect(screen.getByText(/API step failed/)).toBeTruthy();
+    expect(screen.queryByText(/password=private/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect failed step' }));
+    expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true');
+    expect(useExecutionStore.getState().selectedStepNodeId).toBe('node_1');
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it('drops a delayed history response after switching to a different workflow', async () => {
+    setPersistedWorkflow();
+    let resolveOld!: (runs: ExecutionRun[]) => void;
+    const fetchHistory = vi.spyOn(api, 'listExecutions').mockImplementation((id) => {
+      if (id === 'workflow_1') return new Promise((resolve) => { resolveOld = resolve; });
+      return Promise.resolve([]);
+    });
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledWith('workflow_1'));
+    useWorkflowStore.setState({ meta: { _id: 'workflow_2', name: 'Other workflow', isGeneratedByAI: false } });
+    await waitFor(() => expect(fetchHistory).toHaveBeenCalledWith('workflow_2'));
+    resolveOld([failed]);
+    await waitFor(() => expect(useExecutionStore.getState().historyWorkflowId).toBe('workflow_2'));
+    expect(useExecutionStore.getState().historyRuns).toEqual([]);
+  });
+});
