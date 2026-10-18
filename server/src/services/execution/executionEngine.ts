@@ -15,6 +15,13 @@ import { TransformExecutionError, type TransformDiagnostic } from './executors/t
 import { normalizeAndValidateWorkflowGraph } from '../workflowDefinition';
 import { runInTransaction } from '../../utils/mongoTransaction';
 import { verifyWorkflowRevisionIntegrity } from '../workflowRevisionIntegrity';
+import {
+  EXECUTION_HEARTBEAT_MS,
+  ExecutionLeaseLostError,
+  newExecutionLease,
+  renewExecutionLease,
+  persistExecutionSnapshot,
+} from './executionRecovery';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -108,7 +115,7 @@ async function finalizeFailedRun(
     }
   }
   run.markModified('stepLogs');
-  await run.save();
+  await persistExecutionSnapshot(run);
   emitExecutionComplete(run._id.toString(), 'failed', run.error);
   return run;
 }
@@ -183,6 +190,7 @@ export async function startExecution(
       definitionHash: revision.definitionHash,
       userId,
       status: 'running',
+      ...newExecutionLease(),
       startedAt: new Date(),
       triggerType,
       stepLogs,
@@ -199,17 +207,39 @@ export async function startExecution(
 export async function runExecution(
   run: IExecutionRunDocument,
 ): Promise<IExecutionRunDocument> {
+  let leaseLost = false;
+  const checkLease = async () => {
+    if (leaseLost) throw new ExecutionLeaseLostError();
+    try {
+      await renewExecutionLease(run);
+    } catch {
+      leaseLost = true;
+      throw new ExecutionLeaseLostError();
+    }
+  };
+  // Heartbeats continue while nodes await external HTTP and QuickJS workers.
+  // Failure is fail-stop: no later nodes may run and terminal writes are fenced.
+  const timer = run.leaseOwner ? setInterval(() => {
+    void renewExecutionLease(run).catch(() => { leaseLost = true; });
+  }, EXECUTION_HEARTBEAT_MS) : undefined;
+  timer?.unref();
+
   try {
-    return await processExecution(run);
-  } catch {
-    // Includes revision lookup failures and unexpected errors outside node
-    // executors. Never leave a run indefinitely "running" if persistence works.
+    await checkLease();
+    return await processExecution(run, checkLease);
+  } catch (error) {
+    // Recovery may already have committed a failure. A stale worker must never
+    // overwrite that state, send a misleading event or run a following node.
+    if (error instanceof ExecutionLeaseLostError || leaseLost) return run;
     return finalizeFailedRun(run, 'Execution failed unexpectedly');
+  } finally {
+    if (timer) clearInterval(timer);
   }
 }
 
 async function processExecution(
   run: IExecutionRunDocument,
+  checkLease: () => Promise<void>,
 ): Promise<IExecutionRunDocument> {
   if (!run.workflowRevisionId || !run.workflowRevision || !run.definitionHash) {
     return finalizeFailedRun(run, 'Execution run has no pinned workflow revision');
@@ -252,12 +282,15 @@ async function processExecution(
 
   try {
     for (const nodeId of executionOrder) {
-      const node = nodeMap.get(nodeId)!;
+      await checkLease();
+      const node = nodeMap.get(nodeId)!
       const logIndex = run.stepLogs.findIndex((l) => l.nodeId === nodeId);
 
       // ── Skip check ──────────────────────────────────────
       if (skippedNodes.has(nodeId)) {
         run.stepLogs[logIndex].status = 'skipped';
+        run.markModified('stepLogs');
+        await persistExecutionSnapshot(run);
         emitNodeStatus(run._id.toString(), nodeId, 'skipped');
         continue;
       }
@@ -265,6 +298,9 @@ async function processExecution(
       // ── Mark as running ─────────────────────────────────
       run.stepLogs[logIndex].status = 'running';
       run.stepLogs[logIndex].startedAt = new Date();
+      run.markModified('stepLogs');
+      await persistExecutionSnapshot(run);
+      await checkLease();
       emitNodeStatus(run._id.toString(), nodeId, 'running');
 
       try {
@@ -281,6 +317,7 @@ async function processExecution(
           config: node.config,
           context,
         });
+        await checkLease();
 
         // ── Record success ──────────────────────────────
         const now = new Date();
@@ -290,7 +327,9 @@ async function processExecution(
           now.getTime() - run.stepLogs[logIndex].startedAt!.getTime();
         run.stepLogs[logIndex].output = truncateOutput(result.output);
 
-        // Store output in context for downstream nodes
+        // Persist the checkpoint before showing success or running successors.
+        run.markModified('stepLogs');
+        await persistExecutionSnapshot(run);
         context.set(nodeId, result.output);
 
         emitNodeStatus(run._id.toString(), nodeId, 'success', {
@@ -312,6 +351,8 @@ async function processExecution(
           }
         }
       } catch (err: unknown) {
+        if (err instanceof ExecutionLeaseLostError) throw err;
+        await checkLease();
         // ── Record failure ──────────────────────────────
         const now = new Date();
         const transformDiagnostic = err instanceof TransformExecutionError
@@ -349,7 +390,7 @@ async function processExecution(
         run.completedAt = now;
 
         run.markModified('stepLogs');
-        await run.save();
+        await persistExecutionSnapshot(run);
         emitExecutionComplete(run._id.toString(), 'failed', run.error);
         return run;
       }
@@ -360,12 +401,13 @@ async function processExecution(
     run.completedAt = new Date();
 
     run.markModified('stepLogs');
-    await run.save();
+    await checkLease();
+    await persistExecutionSnapshot(run);
     emitExecutionComplete(run._id.toString(), 'completed');
     return run;
-  } catch {
-    // Unexpected engine-level errors are handled by runExecution's outer
-    // boundary so every persisted terminal failure emits completion.
+  } catch (error) {
+    if (error instanceof ExecutionLeaseLostError) throw error;
+    // Unexpected engine errors enter the outer terminal failure boundary.
     throw new Error('Execution failed unexpectedly');
   }
 }
@@ -492,5 +534,6 @@ export async function listExecutions(
     .find({ workflowId, userId })
     .sort({ createdAt: -1 })
     .limit(20)
+    .select('-leaseOwner -leaseHeartbeatAt -leaseExpiresAt')
     .lean() as unknown as IExecutionRunDocument[];
 }

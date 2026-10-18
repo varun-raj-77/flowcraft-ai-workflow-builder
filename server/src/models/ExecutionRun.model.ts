@@ -20,6 +20,10 @@ export interface IExecutionRun {
   workflowRevision?: number;
   definitionHash?: string;
   userId: string;
+  /** Per-run fencing token; absent for pre-M9 historical records. */
+  leaseOwner?: string;
+  leaseHeartbeatAt?: Date;
+  leaseExpiresAt?: Date;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt: Date;
   completedAt?: Date;
@@ -77,6 +81,9 @@ const executionRunSchema = new Schema<IExecutionRun>(
       type: String,
       required: true,
     },
+    leaseOwner: { type: String },
+    leaseHeartbeatAt: Date,
+    leaseExpiresAt: Date,
     status: {
       type: String,
       enum: ['running', 'completed', 'failed', 'cancelled'],
@@ -105,6 +112,10 @@ const executionRunSchema = new Schema<IExecutionRun>(
           _id: ret._id.toString(),
           workflowId: ret.workflowId.toString(),
           workflowRevisionId: ret.workflowRevisionId?.toString(),
+          // Fencing tokens are internal and must never be exposed to clients.
+          leaseOwner: undefined,
+          leaseHeartbeatAt: undefined,
+          leaseExpiresAt: undefined,
           __v: undefined,
         };
       },
@@ -116,6 +127,8 @@ const executionRunSchema = new Schema<IExecutionRun>(
 executionRunSchema.index({ workflowId: 1, createdAt: -1 });
 executionRunSchema.index({ userId: 1 });
 executionRunSchema.index({ workflowRevisionId: 1 });
+// Efficient bounded scans of only M9-leased in-flight runs.
+executionRunSchema.index({ status: 1, leaseExpiresAt: 1 });
 
 export const ExecutionRun = mongoose.model<IExecutionRun>(
   'ExecutionRun',
