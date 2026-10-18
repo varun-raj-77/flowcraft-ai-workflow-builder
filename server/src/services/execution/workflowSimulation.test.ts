@@ -82,7 +82,7 @@ describe('FlowCraft safe simulation foundation', () => {
     expect(result.steps.find((step) => step.nodeId === 'map')?.status).toBe('mocked');
     expect(result.steps.find((step) => step.nodeId === 'route')?.status).toBe('mocked');
     expect(result.steps.find((step) => step.nodeId === 'no')?.status).toBe('skipped');
-    expect(result.steps.find((step) => step.nodeId === 'yes')?.output?.message).toBe('Count 1');
+    expect(result.steps.find((step) => step.nodeId === 'yes')?.output).toMatchObject({ message: 'Count 1' });
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
     expect(JSON.stringify(result)).not.toContain('Bearer secret');

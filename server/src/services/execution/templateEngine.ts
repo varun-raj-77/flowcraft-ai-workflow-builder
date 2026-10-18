@@ -28,6 +28,17 @@ export function buildExecutionInputs(context: ExecutionContext): ExecutionInputs
 }
 
 /**
+ * Match the production Transform return contract in both execution and Test Lab.
+ * Arrays remain arrays (including empty arrays); scalar/null values use data.
+ * This describes the existing runtime shape and never executes user code.
+ */
+export function normalizeTransformOutput(value: unknown): Record<string, unknown> {
+  return value !== null && value !== undefined && typeof value === 'object'
+    ? value as Record<string, unknown>
+    : { data: value ?? null };
+}
+
+/**
  * Resolves all {{nodeId.path}} templates in a string against the context.
  * 
  * Supports:

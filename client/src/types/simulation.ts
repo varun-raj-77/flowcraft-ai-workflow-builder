@@ -24,7 +24,7 @@ export interface SimulationStep {
   nodeId: string;
   nodeType: NodeType;
   status: 'simulated' | 'mocked' | 'skipped' | 'failed';
-  output?: Record<string, unknown>;
+  output?: Record<string, unknown> | unknown[];
   error?: string;
 }
 
