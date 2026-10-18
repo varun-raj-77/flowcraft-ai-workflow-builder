@@ -85,7 +85,7 @@ describe('M6A disposable saved-workflow contract compatibility', () => {
     })).rejects.toMatchObject({ code: 'SCRIPT_LIMIT_EXCEEDED' });
   });
 
-  it('documents the current Test Lab array-output mismatch instead of changing production output', async () => {
+  it('matches direct array returns between production and isolated Test Lab without altering saved definitions', async () => {
     const definition: WorkflowDefinition = {
       nodes: [
         { id: 'start', type: 'start', label: 'Start', position: { x: 0, y: 0 }, config: {} },
@@ -106,8 +106,6 @@ describe('M6A disposable saved-workflow contract compatibility', () => {
     });
     expect(prod.output).toEqual([{ id: 1 }, { id: 2 }]);
     expect(lab.status).toBe('passed');
-    expect(lab.steps.find((step) => step.nodeId === 'transform')?.output).toEqual({
-      data: [{ id: 1 }, { id: 2 }],
-    });
+    expect(lab.steps.find((step) => step.nodeId === 'transform')?.output).toEqual(prod.output);
   }, 15_000);
 });
