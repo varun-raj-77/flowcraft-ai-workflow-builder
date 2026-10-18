@@ -14,7 +14,7 @@ M9 marks runs failed when a worker lease expires; an external API request may **
 
 ### Durable idempotency
 
-MongoDB enforces a **unique partial index on retryOfRunId**. At most one new run is initialized per source run, even for simultaneous requests from separate tabs/instances, provided the index exists and is healthy. Repeating POST returns the existing run with HTTP 200 and **does not** start its processor again. A winning transaction returns 201 and starts processing once.
+MongoDB enforces a **unique partial index on retryOfRunId**. Before initializing any new retry, the API **reads the live index catalog** and requires this exact unique, partial index; missing/malformed index metadata or database errors return HTTP 503, so retries fail closed during index rollout. At most one new run is initialized per source run, even for simultaneous requests from separate tabs/instances, provided the index exists and is healthy. Repeating POST returns the existing run with HTTP 200 and **does not** start its processor again. A winning transaction returns 201 and starts processing once.
 
 Duplicate key handling is constrained to the \`retryOfRunId\` index; unrelated index errors remain errors. A failed HTTP response is ambiguous: the request may have committed before its connection dropped, so clients should inspect history or repeat the same source-run request (rather than starting a normal manual run).
 
