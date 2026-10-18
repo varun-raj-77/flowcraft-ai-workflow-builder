@@ -146,16 +146,32 @@ export async function recoverExpiredExecutions(
 export function startExecutionRecoveryMonitor() {
   let busy = false;
   let closed = false;
+  let quietSweeps = 0;
   const sweep = async () => {
     if (busy || closed) return;
     busy = true;
+    const started = Date.now();
     try {
       const recovered = await recoverExpiredExecutions();
       if (recovered) {
-        console.info(JSON.stringify({ event: 'execution_recovery', recovered }));
+        quietSweeps = 0;
+        console.info(JSON.stringify({
+          event: 'execution_recovery', recovered,
+          durationMs: Math.max(0, Date.now() - started),
+        }));
+      } else if (++quietSweeps >= 10) {
+        // At most one quiet signal per ~5 minutes per instance, never per run.
+        quietSweeps = 0;
+        console.info(JSON.stringify({
+          event: 'execution_recovery_monitor_healthy',
+          durationMs: Math.max(0, Date.now() - started),
+        }));
       }
     } catch {
-      console.warn(JSON.stringify({ event: 'execution_recovery_failed' }));
+      console.warn(JSON.stringify({
+        event: 'execution_recovery_failed',
+        durationMs: Math.max(0, Date.now() - started),
+      }));
     } finally {
       busy = false;
     }

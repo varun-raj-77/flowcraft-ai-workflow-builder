@@ -37,6 +37,16 @@ router.get(
   controller.getExecution,
 );
 
+// Auth enforced by /api/executions mount in routes/index.ts.
+const diagnosticsLimiter = createRateLimiter({
+  name: 'execution-diagnostics', windowMs: 60_000, max: 12,
+});
+router.get(
+  '/workflow/:workflowId/diagnostics',
+  diagnosticsLimiter,
+  controller.getExecutionDiagnostics,
+);
+
 // GET    /api/executions/workflow/:workflowId → List executions for a workflow
 router.get(
   '/workflow/:workflowId',

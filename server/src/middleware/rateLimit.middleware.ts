@@ -49,7 +49,7 @@ export function createRateLimiter({ name, windowMs, max }: RateLimitOptions) {
       event: 'rate_limit_exceeded',
       requestId: req.requestId,
       limiter: name,
-      path: req.path,
+      route: typeof req.route?.path === 'string' ? req.route.path : 'unmatched',
     }));
     res.setHeader('Retry-After', Math.ceil((entry.resetAt - now) / 1000));
     res.status(429).json({

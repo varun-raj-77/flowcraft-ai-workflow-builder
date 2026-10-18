@@ -11,7 +11,10 @@ declare global {
 
 /** Adds a safe correlation ID without recording request bodies or credentials. */
 export function requestContext(req: Request, res: Response, next: NextFunction): void {
-  const requestId = req.get('x-request-id') || randomUUID();
+  // Reject unbounded/client-controlled correlation tokens in logs and headers.
+  const supplied = req.get('x-request-id');
+  const requestId = supplied && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(supplied)
+    ? supplied : randomUUID();
   req.requestId = requestId;
   res.setHeader('x-request-id', requestId);
 
@@ -20,7 +23,7 @@ export function requestContext(req: Request, res: Response, next: NextFunction):
       event: 'http_request_complete',
       requestId,
       method: req.method,
-      path: req.path,
+      route: typeof req.route?.path === 'string' ? req.route.path : 'unmatched',
       status: res.statusCode,
     }));
   });
