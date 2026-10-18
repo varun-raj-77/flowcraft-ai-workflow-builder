@@ -72,6 +72,7 @@ function makeRevision() {
 }
 
 beforeEach(() => {
+  mocks.executionUpdateOne.mockReset();
   mocks.executionUpdateOne.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
   mocks.workflowUpdateOne.mockResolvedValue({ matchedCount: 1 });
   mocks.executionCreate.mockImplementation(async (documents: Array<Record<string, unknown>>) => [{
@@ -123,6 +124,42 @@ describe('pinned workflow execution', () => {
       revision: 1,
       definitionHash: revisionV1.definitionHash,
     });
+  });
+
+  it('does not enter a node executor when the initial fencing check loses ownership', async () => {
+    const rev = makeRevision();
+    mocks.workflowFindOne.mockReturnValue(queryResult({
+      _id: objectId('workflow-1'), userId: 'user-1',
+      currentRevision: 1, currentRevisionId: rev._id,
+    }));
+    mocks.revisionFindOne.mockReturnValue(queryResult(rev));
+    const run = await startExecution('workflow-1', 'user-1');
+    expect(run.leaseOwner).toBeTruthy();
+    mocks.executionUpdateOne.mockResolvedValueOnce({ matchedCount: 0 });
+    await runExecution(run);
+    expect(mocks.requestPublicHttp).not.toHaveBeenCalled();
+    expect(run.status).toBe('running'); // Recovery owns the durable final state.
+    expect(run.save).not.toHaveBeenCalled();
+  });
+
+  it('does not execute further or overwrite recovery when an in-flight API node loses the lease', async () => {
+    const rev = makeRevision();
+    mocks.workflowFindOne.mockReturnValue(queryResult({
+      _id: objectId('workflow-1'), userId: 'user-1',
+      currentRevision: 1, currentRevisionId: rev._id,
+    }));
+    mocks.revisionFindOne.mockReturnValue(queryResult(rev));
+    const run = await startExecution('workflow-1', 'user-1');
+    mocks.requestPublicHttp.mockImplementationOnce(async () => {
+      mocks.executionUpdateOne.mockResolvedValue({ matchedCount: 0 });
+      return { status: 200, data: { ok: true }, headers: {} };
+    });
+    await runExecution(run);
+    expect(mocks.requestPublicHttp).toHaveBeenCalledOnce();
+    expect(mocks.executionUpdateOne.mock.calls.some(([filter, update]) =>
+      filter.status === 'running' && update.$set?.status === 'completed')).toBe(false);
+    expect(run.status).toBe('running');
+    expect(run.save).not.toHaveBeenCalled();
   });
 
   it('rejects cross-user workflow execution before any revision can be attached', async () => {
