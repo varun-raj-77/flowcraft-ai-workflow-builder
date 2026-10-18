@@ -327,6 +327,10 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
   const historyRuns = useExecutionStore((state) => state.historyRuns);
   const historyStatus = useExecutionStore((state) => state.historyStatus);
   const historyError = useExecutionStore((state) => state.historyError);
+  const historyNextCursor = useExecutionStore((state) => state.historyNextCursor);
+  const historyMoreStatus = useExecutionStore((state) => state.historyMoreStatus);
+  const historyMoreError = useExecutionStore((state) => state.historyMoreError);
+  const historyCapReached = useExecutionStore((state) => state.historyCapReached);
   const historyWorkflowId = useExecutionStore((state) => state.historyWorkflowId);
   const selectedHistoricalRunId = useExecutionStore((state) => state.selectedHistoricalRunId);
   const selectHistoricalRun = useExecutionStore((state) => state.selectHistoricalRun);
@@ -334,6 +338,9 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
   const setHistoryLoading = useExecutionStore((state) => state.setHistoryLoading);
   const setHistory = useExecutionStore((state) => state.setHistory);
   const setHistoryError = useExecutionStore((state) => state.setHistoryError);
+  const setHistoryMoreLoading = useExecutionStore((state) => state.setHistoryMoreLoading);
+  const appendHistoryPage = useExecutionStore((state) => state.appendHistoryPage);
+  const setHistoryMoreError = useExecutionStore((state) => state.setHistoryMoreError);
   const clearHistory = useExecutionStore((state) => state.clearHistory);
   const requestInFlightForWorkflow = useRef<string | null>(null);
   const latestRequest = useRef(0);
@@ -357,8 +364,10 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
     requestInFlightForWorkflow.current = workflowId;
     setHistoryLoading(workflowId);
     try {
-      const runs = await api.listExecutions(workflowId);
-      if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId) setHistory(workflowId, runs);
+      const page = await api.listExecutionHistoryPage(workflowId);
+      if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId) {
+        setHistory(workflowId, page.runs, page.nextCursor);
+      }
     } catch (error) {
       if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId) {
         setHistoryError(workflowId, api.getApiErrorMessage(error, 'Unable to load execution history. Please try again.'));
@@ -367,6 +376,30 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
       if (requestId === latestRequest.current) requestInFlightForWorkflow.current = null;
     }
   }, [workflowId, historyWorkflowId, historyStatus, setHistoryLoading, setHistory, setHistoryError]);
+
+  const loadOlder = useCallback(async () => {
+    if (!workflowId || historyWorkflowId !== workflowId || !historyNextCursor
+      || historyStatus !== 'idle' || historyMoreStatus === 'loading'
+      || requestInFlightForWorkflow.current !== null) return;
+    const requestId = ++latestRequest.current;
+    const cursor = historyNextCursor;
+    requestInFlightForWorkflow.current = workflowId;
+    setHistoryMoreLoading(workflowId, cursor);
+    try {
+      const page = await api.listExecutionHistoryPage(workflowId, cursor);
+      if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId) {
+        appendHistoryPage(workflowId, cursor, page.runs, page.nextCursor);
+      }
+    } catch (error) {
+      if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId) {
+        setHistoryMoreError(workflowId, cursor,
+          api.getApiErrorMessage(error, 'Unable to load older executions. Please try again.'));
+      }
+    } finally {
+      if (requestId === latestRequest.current) requestInFlightForWorkflow.current = null;
+    }
+  }, [workflowId, historyWorkflowId, historyNextCursor, historyStatus, historyMoreStatus,
+    setHistoryMoreLoading, appendHistoryPage, setHistoryMoreError]);
 
   useEffect(() => {
     if (workflowId) {
@@ -394,11 +427,11 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
   return (
     <div>
       <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-2 dark:border-zinc-800">
-        <p className="text-[10px] text-zinc-400">Up to 20 most recent executions</p>
+        <p className="text-[10px] text-zinc-400">{historyRuns.length} loaded executions · newest first</p>
         <button type="button" onClick={() => void loadHistory(true)} disabled={historyStatus === 'loading'} className="text-xs font-medium text-zinc-700 hover:underline disabled:opacity-50 dark:text-zinc-300">Refresh</button>
       </div>
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
-        <label htmlFor="history-status-filter" className="text-[10px] text-[var(--text-muted)]">Status</label>
+        <label htmlFor="history-status-filter" className="text-[10px] text-[var(--text-muted)]">Filter loaded runs</label>
         <select id="history-status-filter" aria-label="Filter history by status" value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value as HistoryStatusFilter)}
           className="rounded border border-[var(--border-default)] bg-[var(--surface-base)] px-2 py-1 text-xs text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
@@ -415,7 +448,7 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
       {historyRuns.length === 0 ? (
         <InspectorEmpty message="No executions have been recorded for this workflow." />
       ) : filteredRuns.length === 0 ? (
-        <InspectorEmpty message="No runs in the loaded history match this status. Try another filter." />
+        <InspectorEmpty message="No runs in the loaded history match this status. Try another filter or load older runs." />
       ) : (
         <ul>
           {filteredRuns.map((run) => {
@@ -457,6 +490,19 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
           })}
         </ul>
       )}
+      {historyNextCursor && <div className="border-t border-[var(--border-subtle)] px-4 py-3">
+        <button type="button" onClick={() => void loadOlder()} disabled={historyMoreStatus === 'loading' || historyStatus === 'loading'}
+          className="fc-focus rounded border border-[var(--border-default)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] disabled:opacity-50">
+          {historyMoreStatus === 'loading' ? 'Loading older runs…' : 'Load older runs'}
+        </button>
+      </div>}
+      {historyMoreStatus === 'error' && <div role="alert" className="flex items-center gap-2 px-4 py-2 text-xs text-red-500">
+        <span>{historyMoreError}</span>
+        <button type="button" onClick={() => void loadOlder()} className="fc-focus underline">Retry older runs</button>
+      </div>}
+      {historyCapReached && <p role="status" className="px-4 py-2 text-[10px] text-[var(--text-muted)]">
+        Showing the first 200 loaded runs. Refresh to start again from newest.
+      </p>}
     </div>
   );
 }

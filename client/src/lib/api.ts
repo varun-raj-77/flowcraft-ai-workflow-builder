@@ -2,6 +2,7 @@ import type {
   Workflow,
   WorkflowSummary,
   ExecutionRun,
+  ExecutionHistoryPage,
   GenerationMetadata,
   RevisionHistoryResponse,
   RestoreWorkflowRevisionRequest,
@@ -237,6 +238,15 @@ export async function getExecutionRevisionProvenance(
   runId: string,
 ): Promise<ExecutionRevisionProvenance> {
   return request<ExecutionRevisionProvenance>(`/executions/run/${runId}/provenance`);
+}
+
+/** M14: stable bounded cursor paging, independent of the legacy endpoint. */
+export async function listExecutionHistoryPage(
+  workflowId: string,
+  cursor?: string | null,
+): Promise<ExecutionHistoryPage> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  return request<ExecutionHistoryPage>(`/executions/workflow/${workflowId}/page${query}`);
 }
 
 /** List execution history for a workflow. */
