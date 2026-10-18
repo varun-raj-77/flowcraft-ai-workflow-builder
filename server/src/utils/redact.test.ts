@@ -44,6 +44,15 @@ describe('secret redaction', () => {
     expect(redacted).not.toContain('quoted');
   });
 
+  it('redacts nested credentials inside prose-prefixed JSON and multiple fragments', () => {
+    const input = 'before {"credentials":{"username":"private-user","password":"private-pass"},"count":2} '
+      + 'after [{"api_key":"private-key","safe":true}]';
+    const safe = redactText(input);
+    expect(safe).toBe('before {"credentials":"[REDACTED]","count":2} '
+      + 'after [{"api_key":"[REDACTED]","safe":true}]');
+    expect(safe).not.toMatch(/private-user|private-pass|private-key/);
+  });
+
   it('redacts quoted plain-text assignments and keeps nonsensitive messages unchanged', () => {
     expect(redactText('password="some secret with spaces" finished'))
       .toBe('password=[REDACTED] finished');
