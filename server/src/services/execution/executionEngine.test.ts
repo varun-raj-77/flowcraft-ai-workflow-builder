@@ -178,6 +178,7 @@ describe('pinned workflow execution', () => {
       executionOrder: ['fetch'],
       stepLogs: [],
       save: vi.fn().mockResolvedValue(undefined),
+      markModified: vi.fn(),
     };
 
     const result = await runExecution(legacyRun as never);
