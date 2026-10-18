@@ -17,6 +17,7 @@ import { runInTransaction } from '../../utils/mongoTransaction';
 import { verifyWorkflowRevisionIntegrity } from '../workflowRevisionIntegrity';
 import {
   EXECUTION_HEARTBEAT_MS,
+  EXECUTION_INTERRUPTED_MESSAGE,
   ExecutionLeaseLostError,
   newExecutionLease,
   renewExecutionLease,
@@ -131,6 +132,7 @@ export async function startExecution(
   workflowId: string,
   userId: string,
   triggerType: 'manual' | 'ai_generated' = 'manual',
+  retryOfRunId?: string,
 ): Promise<IExecutionRunDocument> {
   return runInTransaction(async (session) => {
     const workflow = await Workflow.findOne({ _id: workflowId, userId }).session(session);
@@ -140,6 +142,26 @@ export async function startExecution(
 
     if (!workflow.currentRevisionId || !workflow.currentRevision) {
       throw new AppError(409, 'WORKFLOW_MIGRATION_REQUIRED', 'Workflow must be migrated before execution');
+    }
+
+    // Recheck the source inside the same transaction that creates the new run.
+    // A retry must never switch to another workflow revision or bypass ownership.
+    const source = retryOfRunId
+      ? await ExecutionRun.findOne({ _id: retryOfRunId, userId, workflowId: workflow._id }).session(session)
+      : null;
+    if (retryOfRunId && (!source || source.status !== 'failed'
+      || source.error !== EXECUTION_INTERRUPTED_MESSAGE)) {
+      throw new AppError(409, 'RETRY_SOURCE_NOT_INTERRUPTED', 'Only interrupted executions can be retried.');
+    }
+    if (source && (
+      !source.workflowRevisionId
+      || !source.workflowRevision
+      || !source.definitionHash
+      || source.workflowRevisionId.toString() !== workflow.currentRevisionId.toString()
+      || source.workflowRevision !== workflow.currentRevision
+    )) {
+      throw new AppError(409, 'RETRY_REVISION_CHANGED',
+        'The workflow revision has changed. Review the current revision before starting a new run.');
     }
 
     const revision = await WorkflowRevision.findOne({
@@ -156,6 +178,10 @@ export async function startExecution(
     const nodes = graph.nodes as unknown as WorkflowNode[];
     const edges = graph.edges as unknown as WorkflowEdge[];
     verifyWorkflowRevisionIntegrity(revision);
+    if (source && source.definitionHash !== revision.definitionHash) {
+      throw new AppError(409, 'RETRY_REVISION_CHANGED',
+        'The saved revision does not match the interrupted execution.');
+    }
 
     if (nodes.length === 0) {
       throw new AppError(400, 'EMPTY_WORKFLOW', 'Cannot execute an empty workflow');
@@ -185,6 +211,7 @@ export async function startExecution(
 
     const [run] = await ExecutionRun.create([{
       workflowId: workflow._id,
+      ...(source ? { retryOfRunId: source._id } : {}),
       workflowRevisionId: revision._id,
       workflowRevision: revision.revision,
       definitionHash: revision.definitionHash,
@@ -198,6 +225,52 @@ export async function startExecution(
     }], { session });
     return run;
   });
+}
+
+/**
+ * Explicit retry of an M9-interrupted run: new attempt, never step resume.
+ * The unique retryOfRunId index resolves simultaneous or repeated requests.
+ */
+export async function retryInterruptedExecution(
+  sourceRunId: string,
+  userId: string,
+  acknowledged: unknown,
+): Promise<{ run: IExecutionRunDocument; created: boolean }> {
+  if (!/^[a-f0-9]{24}$/i.test(sourceRunId)) {
+    throw new AppError(400, 'INVALID_ID', 'Invalid execution ID.');
+  }
+  if (acknowledged !== true) {
+    throw new AppError(400, 'RETRY_ACKNOWLEDGEMENT_REQUIRED',
+      'Confirm that previous API calls may have caused external side effects.');
+  }
+
+  const source = await ExecutionRun.findOne({ _id: sourceRunId, userId });
+  if (!source) {
+    throw new AppError(404, 'EXECUTION_NOT_FOUND', 'Execution run not found');
+  }
+  if (source.status !== 'failed' || source.error !== EXECUTION_INTERRUPTED_MESSAGE) {
+    throw new AppError(409, 'RETRY_SOURCE_NOT_INTERRUPTED', 'Only interrupted executions can be retried.');
+  }
+
+  // Fast idempotent return is safe even if the source revision has since changed:
+  // it never starts another execution or creates a new run.
+  const existing = await ExecutionRun.findOne({ retryOfRunId: source._id, userId });
+  if (existing) return { run: existing, created: false };
+
+  try {
+    const run = await startExecution(source.workflowId.toString(), userId, 'manual', sourceRunId);
+    return { run, created: true };
+  } catch (error) {
+    // Only duplicate-key errors on the new unique retryOfRunId index represent
+    // a competing request. Never swallow other validation/transaction failures.
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 11000
+      && 'keyPattern' in error && typeof error.keyPattern === 'object' && error.keyPattern !== null
+      && 'retryOfRunId' in error.keyPattern) {
+      const winner = await ExecutionRun.findOne({ retryOfRunId: source._id, userId });
+      if (winner) return { run: winner, created: false };
+    }
+    throw error;
+  }
 }
 
 /**
