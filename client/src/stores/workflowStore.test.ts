@@ -126,3 +126,38 @@ describe('workflow dirty-state contract', () => {
     expect(useWorkflowStore.getState().meta?.generationMetadata).toEqual(metadata);
   });
 });
+
+
+describe('M13 store-side connection safety', () => {
+  const make = (id: string, nodeType: FlowNodeData['nodeType']): Node<FlowNodeData> => ({
+    id, type: nodeType, position: { x: 0, y: 0 }, data: { label: id, nodeType, config: {} },
+  });
+  const conn = (source: string, target: string) => ({ source, target, sourceHandle: null, targetHandle: null });
+  beforeEach(() => {
+    useWorkflowStore.getState().clearWorkflow();
+    const nodes = [make('start', 'start'), make('one', 'transform'), make('two', 'output'), make('end', 'end')];
+    useWorkflowStore.setState({ nodes, edges: [{ id: 'a', source: 'start', target: 'one' }, { id: 'b', source: 'one', target: 'two' }],
+      meta: { _id: 'm13', name: 'Graph', isGeneratedByAI: false }, isDirty: false, undoStack: [], redoStack: [] });
+  });
+  it('does not add a cycle or make workflow dirty or create undo history', () => {
+    const original = useWorkflowStore.getState().edges;
+    useWorkflowStore.getState().onConnect(conn('two', 'one'));
+    expect(useWorkflowStore.getState().edges).toBe(original);
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+    expect(useWorkflowStore.getState().undoStack).toHaveLength(0);
+  });
+  it('rejects duplicate/self/End-source/Start-target/missing connections without a snapshot', () => {
+    for (const c of [conn('start', 'one'), conn('one', 'one'), conn('end', 'two'), conn('two', 'start'), conn('absent', 'two')]) {
+      useWorkflowStore.getState().onConnect(c);
+      expect(useWorkflowStore.getState().edges).toHaveLength(2);
+    }
+    expect(useWorkflowStore.getState().undoStack).toHaveLength(0);
+  });
+  it('records one undoable change for a valid connection', () => {
+    useWorkflowStore.getState().onConnect(conn('two', 'end'));
+    expect(useWorkflowStore.getState().edges).toHaveLength(3);
+    expect(useWorkflowStore.getState().undoStack).toHaveLength(1);
+    useWorkflowStore.getState().undo();
+    expect(useWorkflowStore.getState().edges).toHaveLength(2);
+  });
+});

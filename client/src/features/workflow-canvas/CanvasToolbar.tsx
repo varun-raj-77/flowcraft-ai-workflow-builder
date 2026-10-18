@@ -8,6 +8,7 @@ import { useSaveWorkflow } from './hooks/useSaveWorkflow';
 import { useRunWorkflow } from './hooks/useRunWorkflow';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { validateWorkflowPreflight } from './workflowPreflight';
+import { findWorkflowNodes } from './nodeNavigation';
 import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
 import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 
@@ -85,10 +86,14 @@ export function CanvasToolbar() {
   const redo = useWorkflowStore((s) => s.redo);
   const canUndo = useWorkflowStore((s) => s.undoStack.length > 0);
   const canRedo = useWorkflowStore((s) => s.redoStack.length > 0);
-  const selectNode = useUIStore((s) => s.selectNode);
+  const requestNodeFocus = useUIStore((s) => s.requestNodeFocus);
   const openAIModal = useUIStore((s) => s.openAIModal);
   const openTestLab = useUIStore((s) => s.openTestLab);
   const [showPreflight, setShowPreflight] = useState(false);
+  const [showFinder, setShowFinder] = useState(false);
+  const [nodeQuery, setNodeQuery] = useState('');
+  const finderInput = useRef<HTMLInputElement>(null);
+  const finderTrigger = useRef<HTMLButtonElement>(null);
   const previewRevision = useRevisionHistoryStore((state) => state.previewRevision);
   const openHistory = useRevisionHistoryStore((state) => state.openHistory);
   const isHistorical = previewRevision !== null;
@@ -96,6 +101,7 @@ export function CanvasToolbar() {
   const isReadOnly = isHistorical || comparison !== null;
   const findings = validateWorkflowPreflight(nodes, edges);
   const errors = findings.filter((finding) => finding.severity === 'error');
+  const foundNodes = findWorkflowNodes(nodes, nodeQuery);
 
   const { save, status } = useSaveWorkflow();
   const { run, isRunning } = useRunWorkflow();
@@ -103,8 +109,39 @@ export function CanvasToolbar() {
   useEffect(() => {
     if (isReadOnly) {
       setShowPreflight(false);
+      setShowFinder(false);
     }
   }, [isReadOnly]);
+
+  useEffect(() => {
+    if (showFinder) finderInput.current?.focus();
+  }, [showFinder]);
+
+  useEffect(() => {
+    if (isReadOnly) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'k') return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
+      event.preventDefault();
+      setShowFinder(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isReadOnly]);
+
+  const focusNode = (nodeId: string) => {
+    if (isReadOnly || !nodes.some((node) => node.id === nodeId)) return;
+    requestNodeFocus(nodeId, meta?._id ?? '');
+    setShowFinder(false);
+    setNodeQuery('');
+  };
+
+  const closeFinder = () => {
+    setShowFinder(false);
+    setNodeQuery('');
+    finderTrigger.current?.focus();
+  };
 
   useKeyboardShortcuts({
     enabled: !isReadOnly,
@@ -150,6 +187,10 @@ export function CanvasToolbar() {
         <button type="button" onClick={undo} disabled={isReadOnly || !canUndo} aria-label="Undo" title="Undo (Ctrl+Z)" className="fc-focus rounded-md px-2 py-1 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-30">↶</button>
         <button type="button" onClick={redo} disabled={isReadOnly || !canRedo} aria-label="Redo" title="Redo (Ctrl+Shift+Z)" className="fc-focus rounded-md px-2 py-1 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-30">↷</button>
         </div>
+        <button ref={finderTrigger} type="button" disabled={isReadOnly} aria-expanded={showFinder} aria-controls="workflow-node-finder"
+          onClick={() => { setShowPreflight(false); setShowFinder((open) => !open); }}
+          className="fc-focus rounded-md px-2 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-40"
+          title="Find an existing node (Ctrl/⌘+K)">Find node</button>
         <Button variant="ghost" size="sm" onClick={showHistory} disabled={!meta?._id}>
           ◷ History
         </Button>
@@ -179,7 +220,36 @@ export function CanvasToolbar() {
         </Button>
         <button type="button" disabled={isReadOnly} aria-expanded={showPreflight} aria-controls="workflow-preflight-panel" onClick={() => setShowPreflight((current) => !current)} className={`fc-focus ml-1 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-medium disabled:opacity-40 ${errors.length ? 'text-red-300' : findings.length ? 'text-amber-300' : 'text-emerald-300'}`}><span className={`h-1.5 w-1.5 rounded-full ${errors.length ? 'bg-red-400' : findings.length ? 'bg-amber-400' : 'bg-emerald-400'}`} />{errors.length ? `${errors.length} issues` : findings.length ? `${findings.length} warnings` : 'Ready'}</button>
       </div>
-      {showPreflight && <div id="workflow-preflight-panel" role="region" aria-label="Workflow preflight results" className="fc-panel-raised absolute right-3 top-full z-30 mt-1 max-h-[min(24rem,calc(100vh-8rem))] w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto p-3 shadow-2xl"><p className="text-xs font-semibold text-[var(--text-primary)]">Workflow preflight</p>{findings.length === 0 ? <p className="mt-2 text-xs text-emerald-300">Ready to run.</p> : <ul className="mt-2 space-y-2">{findings.map((finding) => <li key={finding.id} className="flex gap-2 text-xs text-[var(--text-secondary)]"><span className={finding.severity === 'error' ? 'text-red-300' : 'text-amber-300'}>{finding.severity === 'error' ? 'Error' : 'Warning'}</span><span className="flex-1">{finding.message}</span>{finding.nodeId && <button type="button" onClick={() => selectNode(finding.nodeId!)} className="fc-focus rounded text-violet-300 hover:underline">Focus</button>}</li>)}</ul>}</div>}
+      {showFinder && !isReadOnly && (
+        <div id="workflow-node-finder" role="dialog" aria-label="Find workflow node"
+          className="fc-panel-raised absolute right-3 top-full z-40 mt-1 w-80 max-w-[calc(100vw-1.5rem)] rounded-lg border border-[var(--border-subtle)] p-3 shadow-2xl">
+          <label htmlFor="workflow-node-search" className="block text-xs font-semibold text-[var(--text-primary)]">Find a node</label>
+          <input id="workflow-node-search" ref={finderInput} type="search" maxLength={120} value={nodeQuery}
+            onChange={(event) => setNodeQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') { event.preventDefault(); closeFinder(); }
+              if (event.key === 'Enter' && foundNodes.length) { event.preventDefault(); focusNode(foundNodes[0].id); }
+            }}
+            placeholder="Search by node name or type" aria-label="Search workflow nodes"
+            className="fc-control mt-2 w-full px-2 py-1.5 text-xs" />
+          <p role="status" className="mt-2 text-[10px] text-[var(--text-muted)]">
+            {foundNodes.length === 30 ? 'Showing first 30 matching nodes' : `${foundNodes.length} matching nodes`}
+          </p>
+          <ul aria-label="Matching workflow nodes" className="mt-2 max-h-56 space-y-1 overflow-y-auto">
+            {foundNodes.map((node) => <li key={node.id}>
+              <button type="button" onClick={() => focusNode(node.id)}
+                className="fc-focus flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs text-[var(--text-primary)] hover:bg-[var(--surface-hover)]">
+                <span className="min-w-0 truncate">{node.data.label}</span>
+                <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{node.data.nodeType.replaceAll('_', ' ')}</span>
+              </button>
+            </li>)}
+          </ul>
+          {!foundNodes.length && <p className="mt-3 text-xs text-[var(--text-muted)]">No matching nodes in this workflow.</p>}
+          <button type="button" onClick={closeFinder}
+            className="fc-focus mt-2 rounded px-2 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--surface-hover)]">Close</button>
+        </div>
+      )}
+      {showPreflight && <div id="workflow-preflight-panel" role="region" aria-label="Workflow preflight results" className="fc-panel-raised absolute right-3 top-full z-30 mt-1 max-h-[min(24rem,calc(100vh-8rem))] w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto p-3 shadow-2xl"><p className="text-xs font-semibold text-[var(--text-primary)]">Workflow preflight</p>{findings.length === 0 ? <p className="mt-2 text-xs text-emerald-300">Ready to run.</p> : <ul className="mt-2 space-y-2">{findings.map((finding) => <li key={finding.id} className="flex gap-2 text-xs text-[var(--text-secondary)]"><span className={finding.severity === 'error' ? 'text-red-300' : 'text-amber-300'}>{finding.severity === 'error' ? 'Error' : 'Warning'}</span><span className="flex-1">{finding.message}</span>{finding.nodeId && <button type="button" onClick={() => focusNode(finding.nodeId!)} className="fc-focus rounded text-violet-300 hover:underline">Focus</button>}</li>)}</ul>}</div>}
     </header>
   );
 }

@@ -21,6 +21,7 @@ import { useExecutionStore } from '@/stores/executionStore';
 import { nodeTypes } from './nodes/nodeTypes';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { focusExecutionNode } from './executionNodeFocus';
+import { canConnectWorkflowNodes } from './nodeNavigation';
 import { buildComparisonGraph } from '@/features/revision-comparison/comparisonGraph';
 
 /**
@@ -67,6 +68,8 @@ export function WorkflowCanvas() {
   const showUndoToast = useUIStore((s) => s.showUndoToast);
   const clearUndoToast = useUIStore((s) => s.clearUndoToast);
   const selectedStepNodeId = useExecutionStore((s) => s.selectedStepNodeId);
+  const nodeFocusRequest = useUIStore((s) => s.nodeFocusRequest);
+  const clearNodeFocusRequest = useUIStore((s) => s.clearNodeFocusRequest);
   const lastFocusedExecutionNodeId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -78,6 +81,23 @@ export function WorkflowCanvas() {
       setCenter,
     });
   }, [selectedStepNodeId, nodes, setCenter, getViewport]);
+
+  // Explicit builder navigation request: center only a node on the active
+  // editable graph, and consume each request so later React Flow updates do
+  // not fight the user’s pan or zoom. Never reuse execution replay selection.
+  useEffect(() => {
+    if (!nodeFocusRequest) return;
+    const currentWorkflowId = useWorkflowStore.getState().meta?._id ?? '';
+    if (!isReadOnly && currentWorkflowId === nodeFocusRequest.workflowId
+      && nodes.some((node) => node.id === nodeFocusRequest.nodeId)) {
+      focusExecutionNode({
+        selectedNodeId: nodeFocusRequest.nodeId,
+        lastFocusedNodeId: null,
+        nodes, getViewport, setCenter,
+      });
+    }
+    clearNodeFocusRequest();
+  }, [nodeFocusRequest, nodes, isReadOnly, getViewport, setCenter, clearNodeFocusRequest]);
 
   // ── Drag and drop from palette ────────────────────────────
   const { onDragOver, onDrop } = useDragAndDrop();
@@ -95,34 +115,10 @@ export function WorkflowCanvas() {
     selectNode(null);
   }, [selectNode]);
 
-  // ── Connection validation ─────────────────────────────────
-  // Prevents: self-connections, connecting to Start (no input), connecting from End (no output)
+  // ── Shared graph connection validation ────────────────────
   const isValidConnection: IsValidConnection = useCallback(
-    (connection) => {
-      // No self-connections
-      if (connection.source === connection.target) return false;
-
-      const sourceNode = nodes.find((n) => n.id === connection.source);
-      const targetNode = nodes.find((n) => n.id === connection.target);
-
-      // Can't connect FROM an end node
-      if (sourceNode?.data.nodeType === 'end') return false;
-
-      // Can't connect TO a start node
-      if (targetNode?.data.nodeType === 'start') return false;
-
-      // Prevent duplicate edges between same source handle → target
-      const existingEdge = edges.find(
-        (e) =>
-          e.source === connection.source &&
-          e.target === connection.target &&
-          (e.sourceHandle ?? null) === (connection.sourceHandle ?? null),
-      );
-      if (existingEdge) return false;
-
-      return true;
-    },
-    [nodes, edges],
+    (connection) => !isReadOnly && canConnectWorkflowNodes(nodes, edges, connection),
+    [isReadOnly, nodes, edges],
   );
 
   // ── Keyboard shortcuts ────────────────────────────────────
