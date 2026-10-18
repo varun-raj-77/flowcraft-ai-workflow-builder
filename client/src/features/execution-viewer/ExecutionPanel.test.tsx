@@ -293,3 +293,66 @@ describe('M12 history diagnosis and safe comparisons', () => {
     expect(useExecutionStore.getState().historyRuns).toEqual([]);
   });
 });
+
+
+describe('M14 paginated execution inspector', () => {
+  it('appends older pages without replacing the current live run or baseline', async () => {
+    setPersistedWorkflow();
+    const newest = Array.from({ length: 20 }, (_, i) => ({ ...historicalRun, _id: 'new-' + i }));
+    const older = { ...historicalRun, _id: 'oldest-21' };
+    const request = vi.spyOn(api, 'listExecutionHistoryPage')
+      .mockResolvedValueOnce({ runs: newest, nextCursor: 'opaque-cursor' })
+      .mockResolvedValueOnce({ runs: [older], nextCursor: null });
+    const live = useExecutionStore.getState().currentRun;
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution new-0' });
+    fireEvent.click(screen.getByRole('button', { name: 'Set baseline for execution new-0' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load older runs' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution oldest-21' });
+    expect(request).toHaveBeenNthCalledWith(2, 'workflow_1', 'opaque-cursor');
+    expect(screen.getByText(/21 loaded executions/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Baseline selected' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Load older runs' })).toBeNull();
+    expect(useExecutionStore.getState().currentRun).toBe(live);
+  });
+
+  it('keeps history visible after older-page errors and supports retry', async () => {
+    setPersistedWorkflow();
+    const request = vi.spyOn(api, 'listExecutionHistoryPage')
+      .mockResolvedValueOnce({ runs: [historicalRun], nextCursor: 'older' })
+      .mockRejectedValueOnce(new api.ApiError(429, 'RATE_LIMIT', 'Wait and retry'))
+      .mockResolvedValueOnce({ runs: [{ ...historicalRun, _id: 'older-run' }], nextCursor: null });
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Load older runs' });
+    fireEvent.click(screen.getByRole('button', { name: 'Load older runs' }));
+    expect(await screen.findByRole('button', { name: 'Retry older runs' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Set baseline for execution history_run' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry older runs' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution older-run' });
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
+  it('ignores a delayed older page after switching to another workflow', async () => {
+    setPersistedWorkflow();
+    let resolveOlder!: (page: { runs: ExecutionRun[]; nextCursor: string | null }) => void;
+    const request = vi.spyOn(api, 'listExecutionHistoryPage').mockImplementation((id, cursor) => {
+      if (id === 'workflow_1' && cursor) return new Promise((resolve) => { resolveOlder = resolve; });
+      return Promise.resolve({
+        runs: id === 'workflow_1' ? [historicalRun] : [],
+        nextCursor: id === 'workflow_1' ? 'older' : null,
+      });
+    });
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Load older runs' });
+    fireEvent.click(screen.getByRole('button', { name: 'Load older runs' }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    useWorkflowStore.setState({ meta: { _id: 'workflow_2', name: 'Other', isGeneratedByAI: false } });
+    await waitFor(() => expect(request).toHaveBeenCalledWith('workflow_2'));
+    resolveOlder({ runs: [{ ...historicalRun, _id: 'foreign-old' }], nextCursor: null });
+    await waitFor(() => expect(useExecutionStore.getState().historyWorkflowId).toBe('workflow_2'));
+    expect(useExecutionStore.getState().historyRuns).toEqual([]);
+  });
+});
