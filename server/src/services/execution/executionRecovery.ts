@@ -149,13 +149,20 @@ export function startExecutionRecoveryMonitor() {
   const sweep = async () => {
     if (busy || closed) return;
     busy = true;
+    const started = Date.now();
     try {
       const recovered = await recoverExpiredExecutions();
       if (recovered) {
-        console.info(JSON.stringify({ event: 'execution_recovery', recovered }));
+        console.info(JSON.stringify({
+          event: 'execution_recovery', recovered,
+          durationMs: Math.max(0, Date.now() - started),
+        }));
       }
     } catch {
-      console.warn(JSON.stringify({ event: 'execution_recovery_failed' }));
+      console.warn(JSON.stringify({
+        event: 'execution_recovery_failed',
+        durationMs: Math.max(0, Date.now() - started),
+      }));
     } finally {
       busy = false;
     }
