@@ -1,4 +1,4 @@
-import type { Connection, Edge, Node } from '@xyflow/react';
+import type { Edge, Node } from '@xyflow/react';
 import type { FlowNodeData } from '@/types';
 
 export const NODE_SEARCH_LIMIT = 30;
@@ -36,7 +36,7 @@ export function findWorkflowNodes(
 export function canConnectWorkflowNodes(
   nodes: readonly Node<FlowNodeData>[],
   edges: readonly Edge[],
-  connection: Pick<Connection, 'source' | 'target' | 'sourceHandle' | 'targetHandle'>,
+  connection: { source: string | null; target: string | null; sourceHandle?: string | null; targetHandle?: string | null },
 ): boolean {
   const { source, target } = connection;
   if (!source || !target || source === target) return false;
