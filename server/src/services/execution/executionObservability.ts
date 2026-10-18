@@ -108,7 +108,7 @@ export interface ExecutionDiagnostics {
 export function summarizeExecutionRows(
   rows: readonly DiagnosticRow[],
   now = new Date(),
-): Omit<ExecutionDiagnostics, 'retryReadiness'> {
+): Omit<ExecutionDiagnostics, 'retryReadiness' | 'historyIndexReadiness'> {
   const counts = {
     running: 0, completed: 0, failed: 0, cancelled: 0,
     interrupted: 0, otherFailures: 0, retriedAttempts: 0,
