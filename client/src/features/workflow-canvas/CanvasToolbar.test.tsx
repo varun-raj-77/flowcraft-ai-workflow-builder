@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { CanvasToolbar } from './CanvasToolbar';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
 import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
+import type { Node } from '@xyflow/react';
+import type { FlowNodeData } from '@/types';
 
 vi.mock('./hooks/useSaveWorkflow', () => ({ useSaveWorkflow: () => ({ save: vi.fn(), status: 'idle' }) }));
 vi.mock('./hooks/useRunWorkflow', () => ({ useRunWorkflow: () => ({ run: vi.fn(), isRunning: false }) }));
@@ -96,7 +98,7 @@ describe('CanvasToolbar', () => {
 
 
 describe('M13 searchable node navigation', () => {
-  const graphNodes = [
+  const graphNodes: Node<FlowNodeData>[] = [
     { id: 'one', type: 'transform', position: { x: 0, y: 0 }, data: { label: 'Parse Orders', nodeType: 'transform', config: { transformCode: 'return data' } } },
     { id: 'two', type: 'api_call', position: { x: 100, y: 0 }, data: { label: 'Fetch Customers', nodeType: 'api_call', config: { url: 'https://example.test', method: 'GET' } } },
   ];
