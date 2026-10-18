@@ -92,7 +92,7 @@ describe('shared API client', () => {
   });
 
   it('requests bounded execution pages with encoded cursors and first-party credentials', async () => {
-    const request = vi.fn().mockResolvedValue(new Response(
+    const request = vi.fn().mockImplementation(async () => new Response(
       JSON.stringify({ data: { runs: [], nextCursor: null } }), { status: 200 },
     ));
     vi.stubGlobal('fetch', request);
