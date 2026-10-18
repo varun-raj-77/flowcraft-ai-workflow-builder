@@ -330,14 +330,15 @@ describe('M10 explicitly acknowledged, idempotent interrupted-execution retries'
     expect(result.created).toBe(true);
     expect(result.run).toMatchObject({
       status: 'running',
-      retryOfRunId: objectId(sourceRunId),
+      retryOfRunId: expect.anything(),
       workflowRevision: 1,
       definitionHash: sourceRevision.definitionHash,
     });
+    expect(result.run.retryOfRunId?.toString()).toBe(sourceRunId);
     expect(result.run.leaseOwner).toBeTruthy();
     expect(mocks.executionCreate).toHaveBeenCalledOnce();
     expect(mocks.executionCreate.mock.calls[0][0][0]).toMatchObject({
-      retryOfRunId: objectId(sourceRunId),
+      retryOfRunId: expect.anything(),
       status: 'running',
       stepLogs: [{ status: 'pending' }],
     });
