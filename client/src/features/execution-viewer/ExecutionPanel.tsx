@@ -423,19 +423,6 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
 
   if (!workflowId) return <InspectorEmpty message="Save this workflow before viewing execution history." />;
 
-  if (historyStatus === 'loading' && historyRuns.length === 0) {
-    return <div className="space-y-2 px-4 py-3" aria-label="Loading execution history">{[1, 2, 3].map((item) => <div key={item} className="h-10 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" />)}</div>;
-  }
-
-  if (historyStatus === 'error') {
-    return (
-      <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="text-xs text-red-600 dark:text-red-400">{historyError}</p>
-        <button type="button" onClick={() => void loadHistory(true)} className="rounded-md border border-zinc-300 px-3 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-zinc-700">Retry</button>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-2 dark:border-zinc-800">
@@ -462,7 +449,17 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
           onClick={() => { setBaselineId(null); setCandidateId(null); }}>Clear baseline</button>}
       </div>
       {baselineRun && candidateRun && <RunComparisonPanel baseline={baselineRun} candidate={candidateRun} onClear={() => { setBaselineId(null); setCandidateId(null); }} />}
-      {historyRuns.length === 0 ? (
+      {historyStatus === 'loading' && historyRuns.length === 0 ? (
+        <div className="space-y-2 px-4 py-3" aria-label="Loading execution history">
+          {[1, 2, 3].map((item) => <div key={item} className="h-10 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800" />)}
+        </div>
+      ) : historyStatus === 'error' ? (
+        <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 text-center">
+          <p className="text-xs text-red-600 dark:text-red-400">{historyError}</p>
+          <button type="button" onClick={() => void loadHistory(true)}
+            className="rounded-md border border-zinc-300 px-3 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-zinc-700">Retry</button>
+        </div>
+      ) : historyRuns.length === 0 ? (
         <InspectorEmpty message={statusFilter === 'all'
           ? "No executions have been recorded for this workflow."
           : `No ${statusFilter} executions found. Try another status.`} />
