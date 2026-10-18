@@ -28,7 +28,7 @@ The new compatibility tests run *real QuickJS* against representative **syntheti
 ## Review and rollout constraints
 
 1. Review CI: backend/frontend unit tests, typecheck, lint, build, Playwright.
-2. Review the final diff and ensure the new redaction paths do not change output or execution data visible to downstream nodes, only sanitized views/logs/diagnostics.
+2. Review the final diff and verify execution contracts remain intact. **Expected behavior change:** Output-node messages containing recognized credentials will now have additional masking in their returned message, which downstream nodes can read. Test workflows that intentionally parse Output-node messages before release.
 3. Treat **production vs. Test Lab array shape**, template parsing differences, fail-false semantics and already-redacted intermediate Test Lab values as explicit outstanding compatibility work for M6B.
 4. Existing workflows that rely on blocked host globals or exceed QuickJS limits may still fail. Worker threads + WASM are not equivalent to OS-locked-down tenant isolation.
 5. No live customer data, real secrets, or production execution were used in these regression tests.
