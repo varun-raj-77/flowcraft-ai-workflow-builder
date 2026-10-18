@@ -1,4 +1,5 @@
 import { Workflow } from '../../models/Workflow.model';
+import { checkRetryReadiness, logExecutionOutcome } from './executionObservability';
 import { WorkflowRevision } from '../../models/WorkflowRevision.model';
 import {
   ExecutionRun,
@@ -117,6 +118,7 @@ async function finalizeFailedRun(
   }
   run.markModified('stepLogs');
   await persistExecutionSnapshot(run);
+  logExecutionOutcome('failed', 'preflight_failure');
   emitExecutionComplete(run._id.toString(), 'failed', run.error);
   return run;
 }
@@ -260,18 +262,7 @@ export async function retryInterruptedExecution(
   // Fail closed during first deployment or when schema auto-indexing is off.
   // Without a verified *unique* index, simultaneous requests could create
   // multiple full executions and duplicate irreversible external actions.
-  let indexReady = false;
-  try {
-    const indexes = await ExecutionRun.collection.indexes();
-    indexReady = indexes.some((index) =>
-      index.unique === true
-      && index.key?.retryOfRunId === 1
-      && Object.keys(index.key).length === 1
-      && index.partialFilterExpression?.retryOfRunId?.$type === 'objectId');
-  } catch {
-    // Transient index-read/DB errors must never fall back to unsafe writes.
-  }
-  if (!indexReady) {
+  if (await checkRetryReadiness() !== 'ready') {
     throw new AppError(503, 'RETRY_INDEX_UNAVAILABLE',
       'Safe retry is temporarily unavailable. Please try again after the retry index is ready.');
   }
@@ -323,7 +314,8 @@ export async function runExecution(
     // Recovery may already have committed a failure. A stale worker must never
     // overwrite that state, send a misleading event or run a following node.
     if (error instanceof ExecutionLeaseLostError || leaseLost) return run;
-    return finalizeFailedRun(run, 'Execution failed unexpectedly');
+    const failed = await finalizeFailedRun(run, 'Execution failed unexpectedly');
+    return failed;
   } finally {
     if (timer) clearInterval(timer);
   }
@@ -483,6 +475,7 @@ async function processExecution(
 
         run.markModified('stepLogs');
         await persistExecutionSnapshot(run);
+        logExecutionOutcome('failed', 'node_failure');
         emitExecutionComplete(run._id.toString(), 'failed', run.error);
         return run;
       }
@@ -495,6 +488,7 @@ async function processExecution(
     run.markModified('stepLogs');
     await checkLease();
     await persistExecutionSnapshot(run);
+    logExecutionOutcome('completed', 'normal_completion');
     emitExecutionComplete(run._id.toString(), 'completed');
     return run;
   } catch (error) {
