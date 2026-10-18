@@ -84,6 +84,35 @@ function emitExecutionComplete(
   }
 }
 
+/**
+ * Persist a terminal failure before notifying connected clients.
+ * Pending nodes did not run; a node left "running" by an infrastructure error
+ * is marked failed. Do not expose arbitrary infrastructure exception messages.
+ */
+async function finalizeFailedRun(
+  run: IExecutionRunDocument,
+  message: string,
+): Promise<IExecutionRunDocument> {
+  const completedAt = new Date();
+  run.status = 'failed';
+  run.error = redactText(message);
+  run.completedAt = completedAt;
+  for (const step of run.stepLogs) {
+    if (step.status === 'pending') {
+      step.status = 'skipped';
+    } else if (step.status === 'running') {
+      step.status = 'failed';
+      step.completedAt = completedAt;
+      step.durationMs = step.startedAt ? Math.max(0, completedAt.getTime() - step.startedAt.getTime()) : 0;
+      step.error = 'Execution failed unexpectedly';
+    }
+  }
+  run.markModified('stepLogs');
+  await run.save();
+  emitExecutionComplete(run._id.toString(), 'failed', run.error);
+  return run;
+}
+
 // ── Engine ──────────────────────────────────────────────────
 
 /**
@@ -170,13 +199,20 @@ export async function startExecution(
 export async function runExecution(
   run: IExecutionRunDocument,
 ): Promise<IExecutionRunDocument> {
+  try {
+    return await processExecution(run);
+  } catch {
+    // Includes revision lookup failures and unexpected errors outside node
+    // executors. Never leave a run indefinitely "running" if persistence works.
+    return finalizeFailedRun(run, 'Execution failed unexpectedly');
+  }
+}
+
+async function processExecution(
+  run: IExecutionRunDocument,
+): Promise<IExecutionRunDocument> {
   if (!run.workflowRevisionId || !run.workflowRevision || !run.definitionHash) {
-    run.status = 'failed';
-    run.error = 'Execution run has no pinned workflow revision';
-    run.completedAt = new Date();
-    await run.save();
-    emitExecutionComplete(run._id.toString(), 'failed', run.error);
-    return run;
+    return finalizeFailedRun(run, 'Execution run has no pinned workflow revision');
   }
 
   const revision = await WorkflowRevision.findOne({
@@ -187,25 +223,16 @@ export async function runExecution(
     definitionHash: run.definitionHash,
   });
   if (!revision) {
-    run.status = 'failed';
-    run.error = 'Pinned workflow revision not found';
-    run.completedAt = new Date();
-    await run.save();
-    emitExecutionComplete(run._id.toString(), 'failed', run.error);
-    return run;
+    return finalizeFailedRun(run, 'Pinned workflow revision not found');
   }
 
   let graph: ReturnType<typeof normalizeAndValidateWorkflowGraph>;
   try {
     graph = normalizeAndValidateWorkflowGraph(revision.nodes, revision.edges);
     verifyWorkflowRevisionIntegrity(revision);
-  } catch (error) {
-    run.status = 'failed';
-    run.error = error instanceof Error ? error.message : 'Pinned workflow revision is invalid';
-    run.completedAt = new Date();
-    await run.save();
-    emitExecutionComplete(run._id.toString(), 'failed', run.error);
-    return run;
+  } catch {
+    // Integrity/parsing diagnostics may contain saved source: fail closed.
+    return finalizeFailedRun(run, 'Pinned workflow revision failed validation');
   }
 
   const nodes = graph.nodes as unknown as WorkflowNode[];
@@ -318,7 +345,7 @@ export async function runExecution(
 
         // Finalize as failed
         run.status = 'failed';
-        run.error = `Node "${node.label}" (${nodeId}) failed: ${message}`;
+        run.error = redactText(`Node "${node.label}" (${nodeId}) failed: ${message}`);
         run.completedAt = now;
 
         run.markModified('stepLogs');
@@ -336,15 +363,10 @@ export async function runExecution(
     await run.save();
     emitExecutionComplete(run._id.toString(), 'completed');
     return run;
-  } catch (err: unknown) {
-    // Unexpected engine-level error
-    run.status = 'failed';
-    run.error = redactText(err instanceof Error ? err.message : 'Unexpected engine error');
-    run.completedAt = new Date();
-
-    run.markModified('stepLogs');
-    await run.save();
-    return run;
+  } catch {
+    // Unexpected engine-level errors are handled by runExecution's outer
+    // boundary so every persisted terminal failure emits completion.
+    throw new Error('Execution failed unexpectedly');
   }
 }
 
