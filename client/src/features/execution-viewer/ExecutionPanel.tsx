@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import type { ExecutionRun, StepLog, StepStatus, TransformDiagnostic } from '@/types';
 import { JsonViewer } from './JsonViewer';
 import { ExecutionProvenanceCard } from './ExecutionProvenanceCard';
+import { InterruptedExecutionRecovery } from './InterruptedExecutionRecovery';
 import {
   INSPECTOR_TABS,
   type InspectorTab,
@@ -244,6 +245,7 @@ function TimelineView({ run, now }: { run: ExecutionRun | null; now: number }) {
   return (
     <div>
       <RunSummary run={run} now={now} />
+      <InterruptedExecutionRecovery key={run._id} run={run} />
       <ExecutionInsights run={run} now={now} />
       <ReplayControl run={run} />
       <ol className="border-t border-zinc-100 dark:border-zinc-800">
@@ -308,6 +310,7 @@ function LiveView({ run, lastError, now }: { run: ExecutionRun | null; lastError
         </div>
       )}
       <RunSummary run={run} now={now} />
+      <InterruptedExecutionRecovery key={run._id} run={run} />
       <div className="border-t border-zinc-100 dark:border-zinc-800">
         {run.stepLogs.map((log) => <StepLogRow key={log.nodeId} log={log} />)}
       </div>
@@ -419,6 +422,7 @@ export function ExecutionPanel() {
   const restoreExecutionInspector = useUIStore((state) => state.restoreExecutionInspector);
   const workflowId = useWorkflowStore((state) => state.meta?._id);
   const currentRun = useExecutionStore((state) => state.currentRun);
+  const setCurrentRun = useExecutionStore((state) => state.setCurrentRun);
   const lastError = useExecutionStore((state) => state.lastError);
   const historyRuns = useExecutionStore((state) => state.historyRuns);
   const selectedHistoricalRunId = useExecutionStore((state) => state.selectedHistoricalRunId);
@@ -463,6 +467,30 @@ export function ExecutionPanel() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [currentRun?.status]);
+
+  // M9 recovered runs do not emit an event across Railway instances.
+  // Reconcile the active run from durable state until it reaches a terminal state.
+  // Check the currently selected run ID to prevent delayed responses from
+  // overwriting a newer, user-initiated execution.
+  useEffect(() => {
+    if (currentRun?.status !== 'running') return;
+    const runId = currentRun._id;
+    let busy = false;
+    let stopped = false;
+    const timer = window.setInterval(() => {
+      if (busy || stopped) return;
+      busy = true;
+      void api.getExecution(runId).then((next) => {
+        if (stopped || next._id !== runId) return;
+        if (useExecutionStore.getState().currentRun?._id !== runId) return;
+        if (useWorkflowStore.getState().meta?._id !== next.workflowId) return;
+        setCurrentRun(next);
+      }).catch(() => {
+        // Transient network loss should not make a run appear finished.
+      }).finally(() => { busy = false; });
+    }, 2000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [currentRun?._id, currentRun?.status, setCurrentRun]);
 
   const selectedHistoricalRun = historyRuns.find((run) => run._id === selectedHistoricalRunId) ?? null;
   const timelineRun = selectedHistoricalRun ?? currentRun;

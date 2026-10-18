@@ -20,6 +20,21 @@ export const runWorkflow = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+// ── POST /api/executions/run/:runId/retry ────────────────
+// An explicit new execution attempt, not a resume of the old step log.
+export const retryExecution = asyncHandler(async (req: Request, res: Response) => {
+  const { run, created } = await engine.retryInterruptedExecution(
+    req.params.runId, req.userId!, req.body?.acknowledgeExternalSideEffects,
+  );
+  res.status(created ? 201 : 200).json({ data: run });
+  if (created) {
+    void engine.runExecution(run).catch(() => {
+      // The lease/recovery monitor handles interrupted work if persistence fails.
+      console.warn(JSON.stringify({ event: 'retry_execution_processing_failed' }));
+    });
+  }
+});
+
 // ── POST /api/executions/:workflowId/simulate ───────────────
 
 export const simulateWorkflow = asyncHandler(async (req: Request, res: Response) => {

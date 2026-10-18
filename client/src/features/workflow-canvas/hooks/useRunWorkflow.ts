@@ -39,7 +39,8 @@ export function useRunWorkflow() {
     // Poll every 2 seconds until the run is no longer 'running'
     pollRef.current = setInterval(() => {
       void api.getExecution(runId).then((run) => {
-        if (useWorkflowStore.getState().meta?._id !== run.workflowId) {
+        if (useWorkflowStore.getState().meta?._id !== run.workflowId
+          || useExecutionStore.getState().currentRun?._id !== runId) {
           stopPolling();
           return;
         }

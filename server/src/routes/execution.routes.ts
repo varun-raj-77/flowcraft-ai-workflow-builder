@@ -19,6 +19,13 @@ router.post(
   controller.simulateWorkflow,
 );
 
+// POST /api/executions/run/:runId/retry → User-confirmed new attempt, idempotent by source run
+router.post(
+  '/run/:runId/retry',
+  executionLimiter,
+  controller.retryExecution,
+);
+
 // GET    /api/executions/run/:runId           → Get a specific execution result
 router.get(
   '/run/:runId/provenance',

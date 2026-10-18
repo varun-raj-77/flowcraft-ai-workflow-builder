@@ -201,6 +201,16 @@ export async function runWorkflow(workflowId: string): Promise<ExecutionRun> {
   });
 }
 
+/** Start at most one new attempt for an M9-interrupted source run.
+ * The acknowledgement is required by the API, not just by the UI.
+ */
+export async function retryInterruptedExecution(sourceRunId: string): Promise<ExecutionRun> {
+  return request<ExecutionRun>(`/executions/run/${sourceRunId}/retry`, {
+    method: 'POST',
+    body: JSON.stringify({ acknowledgeExternalSideEffects: true }),
+  });
+}
+
 /** Simulate an immutable saved workflow using fixtures; does not create execution runs. */
 export async function simulateWorkflow(workflowId: string, scenario: SimulationScenario): Promise<SimulationResult> {
   return request<SimulationResult>(`/executions/${workflowId}/simulate`, {

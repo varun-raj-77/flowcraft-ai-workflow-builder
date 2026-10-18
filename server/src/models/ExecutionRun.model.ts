@@ -16,6 +16,8 @@ export interface IStepLog {
 
 export interface IExecutionRun {
   workflowId: mongoose.Types.ObjectId;
+  /** A retry is a new run. One durable retry per interrupted source run. */
+  retryOfRunId?: mongoose.Types.ObjectId;
   workflowRevisionId?: mongoose.Types.ObjectId;
   workflowRevision?: number;
   definitionHash?: string;
@@ -65,6 +67,7 @@ const executionRunSchema = new Schema<IExecutionRun>(
       ref: 'Workflow',
       required: true,
     },
+    retryOfRunId: { type: Schema.Types.ObjectId, ref: 'ExecutionRun' },
     workflowRevisionId: {
       type: Schema.Types.ObjectId,
       ref: 'WorkflowRevision',
@@ -112,6 +115,7 @@ const executionRunSchema = new Schema<IExecutionRun>(
           _id: ret._id.toString(),
           workflowId: ret.workflowId.toString(),
           workflowRevisionId: ret.workflowRevisionId?.toString(),
+          retryOfRunId: ret.retryOfRunId?.toString(),
           // Fencing tokens are internal and must never be exposed to clients.
           leaseOwner: undefined,
           leaseHeartbeatAt: undefined,
@@ -126,6 +130,11 @@ const executionRunSchema = new Schema<IExecutionRun>(
 // "Show execution history for this workflow, newest first"
 executionRunSchema.index({ workflowId: 1, createdAt: -1 });
 executionRunSchema.index({ userId: 1 });
+// Source-run ID provides the idempotency scope. Partial index excludes normal runs.
+executionRunSchema.index(
+  { retryOfRunId: 1 },
+  { unique: true, partialFilterExpression: { retryOfRunId: { $type: 'objectId' } } },
+);
 executionRunSchema.index({ workflowRevisionId: 1 });
 // Efficient bounded scans of only M9-leased in-flight runs.
 executionRunSchema.index({ status: 1, leaseExpiresAt: 1 });
