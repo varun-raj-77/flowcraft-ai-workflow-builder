@@ -68,7 +68,7 @@ export const getExecutionDiagnostics = asyncHandler(async (req: Request, res: Re
 // GET /api/executions/workflow/:workflowId/page — owner-verified cursor page
 export const getExecutionHistoryPage = asyncHandler(async (req: Request, res: Response) => {
   const page = await getOwnedExecutionHistoryPage(req.params.workflowId, req.userId!, {
-    limit: req.query.limit, cursor: req.query.cursor,
+    limit: req.query.limit, cursor: req.query.cursor, status: req.query.status,
   });
   res.status(200).json({ data: page });
 });
