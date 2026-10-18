@@ -15,13 +15,6 @@ interface UIState {
   selectNode: (nodeId: string | null) => void;
   requestNodeFocus: (nodeId: string, workflowId: string) => void;
   clearNodeFocusRequest: () => void;
-  requestNodeFocus: (nodeId, workflowId) => set((state) => ({
-    selectedNodeId: nodeId,
-    isConfigPanelOpen: true,
-    nodeFocusRequest: { nodeId, workflowId, sequence: (state.nodeFocusRequest?.sequence ?? 0) + 1 },
-  })),
-  clearNodeFocusRequest: () => set({ nodeFocusRequest: null }),
-
   toggleExecutionPanel: () => void;
   setExecutionPanelOpen: (isOpen: boolean) => void;
   maximizeExecutionInspector: () => void;
@@ -49,6 +42,13 @@ export const useUIStore = create<UIState>((set) => ({
       selectedNodeId: nodeId,
       isConfigPanelOpen: nodeId !== null,
     }),
+
+  requestNodeFocus: (nodeId, workflowId) => set((state) => ({
+    selectedNodeId: nodeId,
+    isConfigPanelOpen: true,
+    nodeFocusRequest: { nodeId, workflowId, sequence: (state.nodeFocusRequest?.sequence ?? 0) + 1 },
+  })),
+  clearNodeFocusRequest: () => set({ nodeFocusRequest: null }),
 
   toggleExecutionPanel: () =>
     set((state) => ({
