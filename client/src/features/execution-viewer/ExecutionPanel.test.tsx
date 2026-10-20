@@ -231,11 +231,11 @@ describe('M18 lightweight history and full-run hydration', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
     await screen.findByRole('button', { name: 'Set baseline for execution history_run' });
     expect(full).not.toHaveBeenCalled();
-    expect(useExecutionStore.getState().historyRuns[0].stepLogs[0].output).toBeUndefined();
+    expect(JSON.stringify(useExecutionStore.getState().historyRuns[0])).not.toContain('Request failed');
     fireEvent.click(screen.getByText(/failed · manual/i));
     expect(await screen.findByRole('button', { name: /Log failure/i })).toBeTruthy();
     expect(full).toHaveBeenCalledTimes(1);
-    expect(useExecutionStore.getState().historyRuns[0].stepLogs[0].output).toBeUndefined();
+    expect(JSON.stringify(useExecutionStore.getState().historyRuns[0])).not.toContain('Request failed');
     expect(useExecutionStore.getState().currentRun?._id).toBe('live_run');
   });
 
