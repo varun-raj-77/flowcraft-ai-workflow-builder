@@ -246,12 +246,13 @@ export async function listExecutionHistoryPage(
   workflowId: string,
   cursor?: string | null,
   status: 'all' | ExecutionStatus = 'all',
+  signal?: AbortSignal,
 ): Promise<ExecutionHistoryPage> {
   const params = new URLSearchParams();
   if (cursor) params.set('cursor', cursor);
   if (status !== 'all') params.set('status', status);
   const query = params.toString();
-  return request<ExecutionHistoryPage>(`/executions/workflow/${workflowId}/page${query ? `?${query}` : ''}`);
+  return request<ExecutionHistoryPage>(`/executions/workflow/${workflowId}/page${query ? `?${query}` : ''}`, { signal });
 }
 
 /** List execution history for a workflow. */
