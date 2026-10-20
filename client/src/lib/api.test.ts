@@ -112,6 +112,25 @@ describe('shared API client', () => {
     );
   });
 
+  it('forwards an AbortSignal to the same-origin history request without changing existing query semantics', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ data: { runs: [], nextCursor: null } }), { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+    await listExecutionHistoryPage('workflow-1', null, 'failed', controller.signal);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/executions/workflow/workflow-1/page?status=failed',
+      expect.objectContaining({
+        signal: controller.signal,
+        credentials: 'include',
+        cache: 'no-store',
+      }),
+    );
+    controller.abort();
+    expect(controller.signal.aborted).toBe(true);
+  });
+
   it('sends expectedRevision when restoring a historical revision as new', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ data: { _id: 'workflow-1', currentRevision: 9 } }),
