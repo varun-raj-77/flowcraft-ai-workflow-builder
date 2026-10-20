@@ -6,8 +6,9 @@ vi.mock('../../models/Workflow.model', () => ({ Workflow: { exists: mocks.exists
 vi.mock('../../models/ExecutionRun.model', () => ({ ExecutionRun: { find: mocks.find } }));
 
 import {
-  EXECUTION_HISTORY_PAGE_SIZE, EXECUTION_HISTORY_PUBLIC_FIELDS, EXECUTION_HISTORY_QUERY_TIMEOUT_MS,
-  encodeHistoryCursor, getOwnedExecutionHistoryPage, parseHistoryCursor, parseHistoryLimit, parseHistoryStatus,
+  EXECUTION_HISTORY_PAGE_SIZE, EXECUTION_HISTORY_PUBLIC_FIELDS, EXECUTION_HISTORY_SUMMARY_FIELDS,
+  EXECUTION_HISTORY_QUERY_TIMEOUT_MS,
+  encodeHistoryCursor, getOwnedExecutionHistoryPage, parseHistoryCursor, parseHistoryLimit, parseHistoryStatus, parseHistoryView,
 } from './executionHistory';
 
 const workflowId = '507f1f77bcf86cd799439011';
@@ -245,5 +246,63 @@ describe('M16 bounded execution history reads', () => {
       .toMatchObject({ statusCode: 404, code: 'WORKFLOW_NOT_FOUND' });
     expect(mocks.find).not.toHaveBeenCalled();
     expect(q.maxTimeMS).not.toHaveBeenCalled();
+  });
+});
+
+describe('M18 opt-in payload-free history pages', () => {
+  it('requires an exact view enum before any database access', async () => {
+    expect(parseHistoryView(undefined)).toBe('full');
+    expect(parseHistoryView('full')).toBe('full');
+    expect(parseHistoryView('summary')).toBe('summary');
+    for (const invalid of ['', 'Summary', null, [], ['summary'], { $ne: 'full' }, 0]) {
+      expect(() => parseHistoryView(invalid)).toThrowError('Invalid execution history view.');
+      await expect(getOwnedExecutionHistoryPage(workflowId, userId, { view: invalid }))
+        .rejects.toMatchObject({ statusCode: 400, code: 'INVALID_HISTORY_VIEW' });
+    }
+    expect(mocks.exists).not.toHaveBeenCalled();
+    expect(mocks.find).not.toHaveBeenCalled();
+  });
+
+  it('projects only run and step metadata in summary mode, preserving cursor and ownership checks', async () => {
+    const rows = [record(24), record(23)];
+    const q = mockRows(rows);
+    const result = await getOwnedExecutionHistoryPage(workflowId, userId,
+      { view: 'summary', status: 'failed', limit: '1' });
+    expect(result.runs).toHaveLength(1);
+    expect(parseHistoryCursor(result.nextCursor, 'failed')?.id.toHexString())
+      .toBe(rows[0]._id.toHexString());
+    expect(mocks.exists).toHaveBeenCalledWith({ _id: workflowId, userId });
+    expect(mocks.find).toHaveBeenCalledWith({ workflowId, userId, status: 'failed' });
+    expect(q.limit).toHaveBeenCalledWith(2);
+    expect(q.maxTimeMS).toHaveBeenCalledWith(EXECUTION_HISTORY_QUERY_TIMEOUT_MS);
+    expect(q.select).toHaveBeenCalledWith(EXECUTION_HISTORY_SUMMARY_FIELDS);
+    const fields = EXECUTION_HISTORY_SUMMARY_FIELDS.split(' ');
+    for (const needed of [
+      '_id', 'workflowId', 'userId', 'status', 'startedAt', 'completedAt',
+      'workflowRevisionId', 'workflowRevision', 'definitionHash', 'createdAt',
+      'stepLogs.nodeId', 'stepLogs.nodeType', 'stepLogs.nodeLabel',
+      'stepLogs.status', 'stepLogs.durationMs',
+    ]) expect(fields).toContain(needed);
+    for (const unsafe of [
+      'stepLogs', 'stepLogs.input', 'stepLogs.output', 'stepLogs.error',
+      'stepLogs.diagnostic', 'error', 'leaseOwner', 'leaseExpiresAt',
+    ]) expect(fields).not.toContain(unsafe);
+  });
+
+  it('keeps full-history projection as the default for legacy clients', async () => {
+    const q = mockRows([record(5)]);
+    await getOwnedExecutionHistoryPage(workflowId, userId);
+    expect(q.select).toHaveBeenCalledWith(EXECUTION_HISTORY_PUBLIC_FIELDS);
+    await getOwnedExecutionHistoryPage(workflowId, userId, { view: 'full' });
+    expect(q.select).toHaveBeenCalledWith(EXECUTION_HISTORY_PUBLIC_FIELDS);
+  });
+
+  it('does not read any run metadata for another user even in summary mode', async () => {
+    mocks.exists.mockResolvedValueOnce(null);
+    const q = mockRows([record(1)]);
+    await expect(getOwnedExecutionHistoryPage(workflowId, 'foreign-user', { view: 'summary' }))
+      .rejects.toMatchObject({ statusCode: 404, code: 'WORKFLOW_NOT_FOUND' });
+    expect(mocks.find).not.toHaveBeenCalled();
+    expect(q.select).not.toHaveBeenCalled();
   });
 });
