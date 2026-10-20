@@ -270,7 +270,7 @@ describe('M18 lightweight history and full-run hydration', () => {
     await waitFor(() => expect(detail).toHaveBeenCalledTimes(1));
     const firstSignal = detail.mock.calls[0][1];
     useWorkflowStore.setState({ meta: { _id: 'workflow_2', name: 'Other workflow', isGeneratedByAI: false } });
-    expect(firstSignal?.aborted).toBe(true);
+    await waitFor(() => expect(firstSignal?.aborted).toBe(true));
     resolveDetail(historicalRun);
     expect(screen.queryByRole('button', { name: /Log failure/i })).toBeNull();
     expect(screen.queryByText('Request failed')).toBeNull();
