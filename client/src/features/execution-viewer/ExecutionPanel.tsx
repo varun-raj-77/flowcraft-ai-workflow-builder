@@ -655,7 +655,7 @@ export function ExecutionPanel() {
   }, [detailId, workflowId, detailRetry]);
 
   const timelineRun = selectedHistoricalRunId
-    ? historicalDetail?.workflowId === workflowId && historicalDetail.run._id === detailId
+    ? historicalDetail && historicalDetail.workflowId === workflowId && historicalDetail.run._id === detailId
       ? historicalDetail.run : null
     : currentRun;
   const currentSummary = currentRun ? getRunSummary(currentRun, now) : null;
