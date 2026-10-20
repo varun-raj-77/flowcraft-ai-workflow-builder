@@ -1,4 +1,4 @@
-import type { ExecutionRun, StepLog } from '@/types';
+import type { ExecutionRun, ExecutionHistorySummaryRun, StepLog } from '@/types';
 
 export const INSPECTOR_TABS = ['live', 'timeline', 'history', 'variables'] as const;
 export type InspectorTab = (typeof INSPECTOR_TABS)[number];
@@ -34,7 +34,7 @@ function parseTimestamp(value?: string): number | null {
 }
 
 /** Derives display-only run facts from the existing ExecutionRun fields. */
-export function getRunSummary(run: ExecutionRun, now = Date.now()): RunSummary {
+export function getRunSummary(run: ExecutionHistorySummaryRun, now = Date.now()): RunSummary {
   const successfulSteps = run.stepLogs.filter((log) => log.status === 'success').length;
   const failedSteps = run.stepLogs.filter((log) => log.status === 'failed').length;
   const skippedSteps = run.stepLogs.filter((log) => log.status === 'skipped').length;

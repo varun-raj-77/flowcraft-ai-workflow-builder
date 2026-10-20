@@ -531,6 +531,24 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       return;
     }
 
+    // M18: full details are retrieved only when the operator selects one run.
+    // Keep the mock's tenant guard aligned with the production single-run route.
+    const runDetailMatch = path.match(/^\/executions\/run\/([^/]+)$/);
+    if (runDetailMatch && method === 'GET') {
+      if (!authenticated) {
+        await json(route, 401, { error: { code: 'MISSING_TOKEN', message: 'Authentication required' } });
+        return;
+      }
+      const run = [...executions.values()].flat()
+        .find((candidate) => candidate._id === runDetailMatch[1] && candidate.userId === 'user-e2e');
+      if (!run) {
+        await json(route, 404, { error: { code: 'EXECUTION_NOT_FOUND', message: 'Execution run not found' } });
+        return;
+      }
+      await json(route, 200, { data: run });
+      return;
+    }
+
     const provenanceMatch = path.match(/^\/executions\/run\/([^/]+)\/provenance$/);
     if (provenanceMatch && method === 'GET') {
       const runId = provenanceMatch[1];
@@ -643,7 +661,28 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       const cursor = url.searchParams.get('cursor');
       const start = cursor && /^e2e:\d+$/.test(cursor) ? Number(cursor.slice(4)) : 0;
       const pageSize = 20;
-      const runs = scoped.slice(start, start + pageSize);
+      const view = url.searchParams.get('view') ?? 'full';
+      if (view !== 'full' && view !== 'summary') {
+        await json(route, 400, { error: { code: 'INVALID_HISTORY_VIEW', message: 'Invalid execution history view.' } });
+        return;
+      }
+      const runs = scoped.slice(start, start + pageSize).map((run) => {
+        if (view === 'full') return run;
+        const { stepLogs, ...metadata } = run;
+        // Test the actual payload-free list/detail split, not a full-detail fake.
+        return {
+          ...Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== 'error')),
+          stepLogs: Array.isArray(stepLogs)
+            ? stepLogs.map((raw: unknown) => {
+                const log = raw as Record<string, unknown>;
+                return {
+                  nodeId: log.nodeId, nodeType: log.nodeType, nodeLabel: log.nodeLabel,
+                  status: log.status, durationMs: log.durationMs,
+                };
+              })
+            : [],
+        };
+      });
       const nextCursor = start + pageSize < scoped.length ? `e2e:${start + pageSize}` : null;
       await json(route, 200, { data: { runs, nextCursor } });
       return;

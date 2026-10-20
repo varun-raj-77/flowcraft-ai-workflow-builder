@@ -554,11 +554,15 @@ export function ExecutionPanel() {
   const setCurrentRun = useExecutionStore((state) => state.setCurrentRun);
   const lastError = useExecutionStore((state) => state.lastError);
   const historyRuns = useExecutionStore((state) => state.historyRuns);
+  const historyWorkflowId = useExecutionStore((state) => state.historyWorkflowId);
   const selectedHistoricalRunId = useExecutionStore((state) => state.selectedHistoricalRunId);
   const activeInspectorTab = useExecutionStore((state) => state.activeInspectorTab);
   const setActiveInspectorTab = useExecutionStore((state) => state.setActiveInspectorTab);
   const [now, setNow] = useState(() => Date.now());
   const [height, setHeight] = useState(288);
+  const [historicalDetail, setHistoricalDetail] = useState<{ workflowId: string; run: ExecutionRun } | null>(null);
+  const [historicalDetailError, setHistoricalDetailError] = useState<string | null>(null);
+  const [detailRetry, setDetailRetry] = useState(0);
   const dragStart = useRef<{ y: number; height: number } | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const tabRefs = useRef<Record<InspectorTab, HTMLButtonElement | null>>({ live: null, timeline: null, history: null, variables: null });
@@ -621,8 +625,39 @@ export function ExecutionPanel() {
     return () => { stopped = true; window.clearInterval(timer); };
   }, [currentRun?._id, currentRun?.status, setCurrentRun]);
 
-  const selectedHistoricalRun = historyRuns.find((run) => run._id === selectedHistoricalRunId) ?? null;
-  const timelineRun = selectedHistoricalRun ?? currentRun;
+  const selectedHistoricalRun = historyWorkflowId === workflowId
+    ? historyRuns.find((run) => run._id === selectedHistoricalRunId && run.workflowId === workflowId) ?? null
+    : null;
+  const detailId = selectedHistoricalRun?._id ?? null;
+
+  // Retain at most one full historical payload in this inspector. Never show a
+  // previous run while switching selection/workflow; owner access is enforced
+  // again by GET /executions/run/:id.
+  useEffect(() => {
+    setHistoricalDetail(null);
+    setHistoricalDetailError(null);
+    if (!detailId || !workflowId) return;
+    const controller = new AbortController();
+    void api.getExecution(detailId, controller.signal).then((run) => {
+      if (controller.signal.aborted) return;
+      if (run._id !== detailId || run.workflowId !== workflowId) {
+        setHistoricalDetailError('The selected execution does not belong to this workflow.');
+        return;
+      }
+      setHistoricalDetail({ workflowId, run });
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        setHistoricalDetailError(api.getApiErrorMessage(error,
+          'Unable to load this execution. Please try again.'));
+      }
+    });
+    return () => controller.abort();
+  }, [detailId, workflowId, detailRetry]);
+
+  const timelineRun = selectedHistoricalRunId
+    ? historicalDetail && historicalDetail.workflowId === workflowId && historicalDetail.run._id === detailId
+      ? historicalDetail.run : null
+    : currentRun;
   const currentSummary = currentRun ? getRunSummary(currentRun, now) : null;
 
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -707,9 +742,16 @@ export function ExecutionPanel() {
           </div>
           <div id={`execution-inspector-panel-${activeInspectorTab}`} role="tabpanel" aria-labelledby={`execution-inspector-tab-${activeInspectorTab}`} onWheel={(event) => event.stopPropagation()} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {activeInspectorTab === 'live' && <LiveView run={currentRun} lastError={lastError} now={now} />}
-            {activeInspectorTab === 'timeline' && <TimelineView run={timelineRun} now={now} />}
+            {(activeInspectorTab === 'timeline' || activeInspectorTab === 'variables') && selectedHistoricalRunId && !timelineRun
+              ? <div role="status" className="px-4 py-4 text-xs text-[var(--text-secondary)]">
+                  {historicalDetailError ?? (detailId ? 'Loading selected execution details…' : 'The selected execution is no longer in this history.')}
+                  {historicalDetailError && <button type="button"
+                    className="ml-2 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+                    onClick={() => setDetailRetry((count) => count + 1)}>Retry details</button>}
+                </div>
+              : activeInspectorTab === 'timeline' ? <TimelineView run={timelineRun} now={now} />
+                : activeInspectorTab === 'variables' ? <VariableExplorer run={timelineRun} /> : null}
             {activeInspectorTab === 'history' && <HistoryView workflowId={workflowId} now={now} />}
-            {activeInspectorTab === 'variables' && <VariableExplorer run={timelineRun} />}
           </div>
         </div>
       )}

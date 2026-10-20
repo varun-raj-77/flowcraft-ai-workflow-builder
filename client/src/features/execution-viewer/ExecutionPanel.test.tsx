@@ -46,6 +46,7 @@ describe('ExecutionPanel', () => {
   it('loads history for a persisted workflow and keeps the active live run when a historical run is selected', async () => {
     setPersistedWorkflow();
     vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [historicalRun], nextCursor: null });
+    const detail = vi.spyOn(api, 'getExecution').mockResolvedValue(historicalRun);
     render(<ExecutionPanel />);
 
     fireEvent.click(screen.getByRole('tab', { name: 'History' }));
@@ -55,6 +56,8 @@ describe('ExecutionPanel', () => {
     expect(useExecutionStore.getState().selectedHistoricalRunId).toBe('history_run');
     expect(useExecutionStore.getState().currentRun?._id).toBe('live_run');
     expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true');
+    await screen.findByRole('button', { name: /Log failure/i });
+    expect(detail).toHaveBeenCalledWith('history_run', expect.any(AbortSignal));
   });
 
   it('does not request history for an unsaved workflow', async () => {
@@ -85,10 +88,13 @@ describe('ExecutionPanel', () => {
     await waitFor(() => expect(listExecutions).toHaveBeenCalledTimes(2));
   });
 
-  it('selects the matching canvas node from a timeline row while live updates continue to target currentRun', () => {
-    useExecutionStore.setState({ historyRuns: [historicalRun], selectedHistoricalRunId: 'history_run', activeInspectorTab: 'timeline' });
+  it('selects the matching canvas node from a timeline row while live updates continue to target currentRun', async () => {
+    setPersistedWorkflow();
+    vi.spyOn(api, 'getExecution').mockResolvedValue(historicalRun);
+    useExecutionStore.setState({ historyRuns: [historicalRun], historyWorkflowId: 'workflow_1',
+      selectedHistoricalRunId: 'history_run', activeInspectorTab: 'timeline' });
     render(<ExecutionPanel />);
-    fireEvent.click(screen.getByRole('button', { name: /Log failure/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Log failure/i }));
     expect(useUIStore.getState().selectedNodeId).toBe('node_2');
 
     useExecutionStore.getState().updateNodeStatus('node_1', { status: 'failed' });
@@ -206,6 +212,69 @@ describe('ExecutionPanel', () => {
     expect(useUIStore.getState().isExecutionInspectorMaximized).toBe(true);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(useUIStore.getState().isExecutionInspectorMaximized).toBe(false);
+  });
+});
+
+describe('M18 lightweight history and full-run hydration', () => {
+  const summary = {
+    ...historicalRun,
+    stepLogs: [{ nodeId: 'node_2' as const, nodeType: 'output' as const,
+      nodeLabel: 'Log failure', status: 'failed' as const, durationMs: 1000 }],
+    error: undefined,
+  };
+
+  it('lists only lightweight step metadata, with no full-run request until a row is selected', async () => {
+    setPersistedWorkflow();
+    vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [summary], nextCursor: null });
+    const full = vi.spyOn(api, 'getExecution').mockResolvedValue(historicalRun);
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution history_run' });
+    expect(full).not.toHaveBeenCalled();
+    expect(JSON.stringify(useExecutionStore.getState().historyRuns[0])).not.toContain('Request failed');
+    fireEvent.click(screen.getByText(/failed · manual/i));
+    expect(await screen.findByRole('button', { name: /Log failure/i })).toBeTruthy();
+    expect(full).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(useExecutionStore.getState().historyRuns[0])).not.toContain('Request failed');
+    expect(useExecutionStore.getState().currentRun?._id).toBe('live_run');
+  });
+
+  it('refuses mismatched run details without displaying foreign payloads and supports a retry', async () => {
+    setPersistedWorkflow();
+    vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [summary], nextCursor: null });
+    const detail = vi.spyOn(api, 'getExecution')
+      .mockResolvedValueOnce({ ...historicalRun, workflowId: 'another-workflow' })
+      .mockResolvedValueOnce(historicalRun);
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution history_run' });
+    fireEvent.click(screen.getByText(/failed · manual/i));
+    expect(await screen.findByText(/does not belong to this workflow/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Log failure/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry details' }));
+    expect(await screen.findByRole('button', { name: /Log failure/i })).toBeTruthy();
+    expect(detail).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels a stale selected-run hydration when switching away from that workflow', async () => {
+    setPersistedWorkflow();
+    vi.spyOn(api, 'listExecutionHistoryPage').mockResolvedValue({ runs: [summary], nextCursor: null });
+    let resolveDetail!: (run: ExecutionRun) => void;
+    const detail = vi.spyOn(api, 'getExecution').mockImplementation(() => new Promise((resolve) => {
+      resolveDetail = resolve;
+    }));
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Set baseline for execution history_run' });
+    fireEvent.click(screen.getByText(/failed · manual/i));
+    await waitFor(() => expect(detail).toHaveBeenCalledTimes(1));
+    const firstSignal = detail.mock.calls[0][1];
+    useWorkflowStore.setState({ meta: { _id: 'workflow_2', name: 'Other workflow', isGeneratedByAI: false } });
+    await waitFor(() => expect(firstSignal?.aborted).toBe(true));
+    resolveDetail(historicalRun);
+    expect(screen.queryByRole('button', { name: /Log failure/i })).toBeNull();
+    expect(screen.queryByText('Request failed')).toBeNull();
+    expect(useExecutionStore.getState().currentRun?._id).toBe('live_run');
   });
 });
 

@@ -10,6 +10,14 @@ export const EXECUTION_HISTORY_QUERY_TIMEOUT_MS = 4_000;
 export const EXECUTION_HISTORY_PUBLIC_FIELDS =
   '_id workflowId retryOfRunId workflowRevisionId workflowRevision definitionHash ' +
   'userId status startedAt completedAt triggerType error stepLogs executionOrder createdAt updatedAt';
+/** Detail-free opt-in projection. Step metadata supports counts and pinned comparisons;
+ * input/output/error/diagnostic payloads remain on the owner-checked single-run route.
+ * Do not project the entire stepLogs subdocument.
+ */
+export const EXECUTION_HISTORY_SUMMARY_FIELDS =
+  '_id workflowId retryOfRunId workflowRevisionId workflowRevision definitionHash ' +
+  'userId status startedAt completedAt triggerType executionOrder createdAt updatedAt ' +
+  'stepLogs.nodeId stepLogs.nodeType stepLogs.nodeLabel stepLogs.status stepLogs.durationMs';
 const MAX_CURSOR_LENGTH = 160;
 export type ExecutionHistoryFilter = 'all' | 'running' | 'completed' | 'failed' | 'cancelled';
 const STATUSES = new Set<ExecutionHistoryFilter>(['all', 'running', 'completed', 'failed', 'cancelled']);
@@ -22,6 +30,14 @@ export interface ExecutionHistoryPage {
 
 function invalidCursor(): never {
   throw new AppError(400, 'INVALID_HISTORY_CURSOR', 'Invalid execution history cursor.');
+}
+
+export type ExecutionHistoryView = 'full' | 'summary';
+/** Reject untrusted query objects/arrays and preserve the legacy default full response. */
+export function parseHistoryView(input: unknown): ExecutionHistoryView {
+  if (input === undefined) return 'full';
+  if (input === 'full' || input === 'summary') return input;
+  throw new AppError(400, 'INVALID_HISTORY_VIEW', 'Invalid execution history view.');
 }
 
 export function parseHistoryLimit(input: unknown): number {
@@ -97,10 +113,11 @@ export function parseHistoryCursor(
 export async function getOwnedExecutionHistoryPage(
   workflowId: string,
   userId: string,
-  options: { limit?: unknown; cursor?: unknown; status?: unknown } = {},
+  options: { limit?: unknown; cursor?: unknown; status?: unknown; view?: unknown } = {},
 ): Promise<ExecutionHistoryPage> {
   const limit = parseHistoryLimit(options.limit);
   const status = parseHistoryStatus(options.status);
+  const view = parseHistoryView(options.view);
   const cursor = parseHistoryCursor(options.cursor, status);
   if (!mongoose.isValidObjectId(workflowId)) {
     throw new AppError(404, 'WORKFLOW_NOT_FOUND', 'Workflow not found');
@@ -117,7 +134,7 @@ export async function getOwnedExecutionHistoryPage(
     rows = await ExecutionRun.find({ workflowId, userId, ...(status === 'all' ? {} : { status }), ...before })
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit + 1)
-      .select(EXECUTION_HISTORY_PUBLIC_FIELDS)
+      .select(view === 'summary' ? EXECUTION_HISTORY_SUMMARY_FIELDS : EXECUTION_HISTORY_PUBLIC_FIELDS)
       .maxTimeMS(EXECUTION_HISTORY_QUERY_TIMEOUT_MS)
       .lean() as unknown as HistoryRow[];
   } catch (error) {

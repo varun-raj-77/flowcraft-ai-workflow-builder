@@ -75,8 +75,15 @@ export interface ExecutionRevisionProvenance {
   message?: string;
 }
 
-/** M14: bounded, owner-scoped immutable-history page. */
+/** M18: lightweight page rows never include input/output/errors/diagnostics.
+ * A selected run is fetched via the existing owner-scoped single-run endpoint.
+ */
+export type ExecutionHistorySummaryRun = Omit<ExecutionRun, 'stepLogs' | 'error'> & {
+  stepLogs: Array<Pick<StepLog, 'nodeId' | 'nodeType' | 'nodeLabel' | 'status' | 'durationMs'>>;
+};
+
+/** Owner-scoped cursor page. Backend preserves a legacy full view for other consumers. */
 export interface ExecutionHistoryPage {
-  runs: ExecutionRun[];
+  runs: ExecutionHistorySummaryRun[];
   nextCursor: string | null;
 }

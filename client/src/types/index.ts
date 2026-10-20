@@ -37,6 +37,7 @@ export type {
   StepStatus,
   StepLog,
   ExecutionRun,
+  ExecutionHistorySummaryRun,
   TransformDiagnostic,
   ExecutionRevisionProvenance,
   ExecutionHistoryPage,

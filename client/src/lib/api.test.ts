@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ApiError,
+  getExecution,
   changePassword,
   getMe,
   getWorkflowAiPromptContext,
@@ -98,16 +99,16 @@ describe('shared API client', () => {
     vi.stubGlobal('fetch', request);
     expect(await listExecutionHistoryPage('workflow-1', 'opaque+/token')).toEqual({ runs: [], nextCursor: null });
     expect(request).toHaveBeenCalledWith(
-      '/api/executions/workflow/workflow-1/page?cursor=opaque%2B%2Ftoken',
+      '/api/executions/workflow/workflow-1/page?cursor=opaque%2B%2Ftoken&view=summary',
       expect.objectContaining({ credentials: 'include', cache: 'no-store' }),
     );
     await listExecutionHistoryPage('workflow-1');
     expect(request).toHaveBeenLastCalledWith(
-      '/api/executions/workflow/workflow-1/page', expect.any(Object),
+      '/api/executions/workflow/workflow-1/page?view=summary', expect.any(Object),
     );
     await listExecutionHistoryPage('workflow-1', 'v2cursor', 'failed');
     expect(request).toHaveBeenLastCalledWith(
-      '/api/executions/workflow/workflow-1/page?cursor=v2cursor&status=failed',
+      '/api/executions/workflow/workflow-1/page?cursor=v2cursor&status=failed&view=summary',
       expect.objectContaining({ credentials: 'include', cache: 'no-store' }),
     );
   });
@@ -120,7 +121,7 @@ describe('shared API client', () => {
     const controller = new AbortController();
     await listExecutionHistoryPage('workflow-1', null, 'failed', controller.signal);
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/executions/workflow/workflow-1/page?status=failed',
+      '/api/executions/workflow/workflow-1/page?status=failed&view=summary',
       expect.objectContaining({
         signal: controller.signal,
         credentials: 'include',
@@ -129,6 +130,17 @@ describe('shared API client', () => {
     );
     controller.abort();
     expect(controller.signal.aborted).toBe(true);
+  });
+
+  it('requests full details for a single run with an optional cancellation signal', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ data: { _id: 'run-123', stepLogs: [] } }), { status: 200 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+    await getExecution('run-123', controller.signal);
+    expect(fetchMock).toHaveBeenCalledWith('/api/executions/run/run-123',
+      expect.objectContaining({ signal: controller.signal, credentials: 'include', cache: 'no-store' }));
   });
 
   it('sends expectedRevision when restoring a historical revision as new', async () => {
