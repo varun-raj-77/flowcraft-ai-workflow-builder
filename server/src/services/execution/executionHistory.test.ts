@@ -6,7 +6,7 @@ vi.mock('../../models/Workflow.model', () => ({ Workflow: { exists: mocks.exists
 vi.mock('../../models/ExecutionRun.model', () => ({ ExecutionRun: { find: mocks.find } }));
 
 import {
-  EXECUTION_HISTORY_PAGE_SIZE,
+  EXECUTION_HISTORY_PAGE_SIZE, EXECUTION_HISTORY_PUBLIC_FIELDS, EXECUTION_HISTORY_QUERY_TIMEOUT_MS,
   encodeHistoryCursor, getOwnedExecutionHistoryPage, parseHistoryCursor, parseHistoryLimit, parseHistoryStatus,
 } from './executionHistory';
 
@@ -22,11 +22,12 @@ const record = (id: number, timestamp = '2026-10-18T12:00:00.000Z') => ({
 });
 function mockRows(rows: unknown[]) {
   const lean = vi.fn().mockResolvedValue(rows);
-  const select = vi.fn().mockReturnValue({ lean });
+  const maxTimeMS = vi.fn().mockReturnValue({ lean });
+  const select = vi.fn().mockReturnValue({ maxTimeMS });
   const limit = vi.fn().mockReturnValue({ select });
   const sort = vi.fn().mockReturnValue({ limit });
   mocks.find.mockReturnValue({ sort });
-  return { sort, limit, select, lean };
+  return { sort, limit, select, maxTimeMS, lean };
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -103,7 +104,13 @@ describe('M14 authenticated keyset history paging', () => {
     expect(parseHistoryCursor(result.nextCursor)?.id.toHexString()).toBe(items[19]._id.toHexString());
     expect(q.sort).toHaveBeenCalledWith({ createdAt: -1, _id: -1 });
     expect(q.limit).toHaveBeenCalledWith(21);
-    expect(q.select).toHaveBeenCalledWith('-leaseOwner -leaseHeartbeatAt -leaseExpiresAt');
+    expect(q.select).toHaveBeenCalledWith(EXECUTION_HISTORY_PUBLIC_FIELDS);
+    expect(q.maxTimeMS).toHaveBeenCalledWith(EXECUTION_HISTORY_QUERY_TIMEOUT_MS);
+    expect(EXECUTION_HISTORY_PUBLIC_FIELDS.split(' ')).toEqual(expect.arrayContaining([
+      '_id', 'workflowId', 'userId', 'stepLogs', 'executionOrder', 'definitionHash',
+      'workflowRevisionId', 'retryOfRunId', 'createdAt', 'updatedAt',
+    ]));
+    expect(EXECUTION_HISTORY_PUBLIC_FIELDS).not.toMatch(/leaseOwner|leaseExpiresAt|leaseHeartbeatAt/);
     expect(mocks.find).toHaveBeenCalledWith({ workflowId, userId });
   });
 
@@ -198,5 +205,45 @@ describe('M15 tenant-safe server-filtered execution history', () => {
     await expect(getOwnedExecutionHistoryPage(workflowId, 'foreign-account', { status: 'failed', cursor: token }))
       .rejects.toMatchObject({ statusCode: 404, code: 'WORKFLOW_NOT_FOUND' });
     expect(mocks.find).not.toHaveBeenCalled();
+  });
+});
+
+describe('M16 bounded execution history reads', () => {
+  it('applies a finite server-side query budget to filtered and cursor pages', async () => {
+    const q = mockRows([record(12)]);
+    await getOwnedExecutionHistoryPage(workflowId, userId, {
+      status: 'failed', cursor: encodeHistoryCursor(record(13), 'failed'), limit: '2',
+    });
+    expect(q.limit).toHaveBeenCalledWith(3);
+    expect(q.maxTimeMS).toHaveBeenCalledWith(4_000);
+    expect(q.select).toHaveBeenCalledWith(EXECUTION_HISTORY_PUBLIC_FIELDS);
+  });
+
+  it('returns a safe retryable 503 for MongoDB execution timeouts without leaking internals', async () => {
+    const q = mockRows([]);
+    q.lean.mockRejectedValueOnce(Object.assign(
+      new Error('MongoServerError: credentials password=extremely-secret'), { code: 50 },
+    ));
+    const error = await getOwnedExecutionHistoryPage(workflowId, userId)
+      .catch((e: unknown) => e);
+    expect(error).toMatchObject({ statusCode: 503, code: 'HISTORY_QUERY_TIMEOUT' });
+    expect((error as Error).message).not.toMatch(/password|credentials|MongoServerError/);
+    expect(mocks.exists).toHaveBeenCalledWith({ _id: workflowId, userId });
+  });
+
+  it('does not misclassify unrelated database failures as timeouts', async () => {
+    const q = mockRows([]);
+    const failure = Object.assign(new Error('database unavailable'), { code: 91 });
+    q.lean.mockRejectedValueOnce(failure);
+    await expect(getOwnedExecutionHistoryPage(workflowId, userId)).rejects.toBe(failure);
+  });
+
+  it('never reaches query execution for unauthorized workflows', async () => {
+    mocks.exists.mockResolvedValueOnce(null);
+    const q = mockRows([]);
+    await expect(getOwnedExecutionHistoryPage(workflowId, 'different-tenant')).rejects
+      .toMatchObject({ statusCode: 404, code: 'WORKFLOW_NOT_FOUND' });
+    expect(mocks.find).not.toHaveBeenCalled();
+    expect(q.maxTimeMS).not.toHaveBeenCalled();
   });
 });

@@ -390,6 +390,40 @@ describe('M17 cancellable execution history requests', () => {
     expect(useExecutionStore.getState().historyError).toBeNull();
   });
 
+  it('cancels an obsolete older page after switching status and keeps the new filtered page authoritative', async () => {
+    setPersistedWorkflow();
+    let rejectOlder!: (error: unknown) => void;
+    const request = vi.spyOn(api, 'listExecutionHistoryPage')
+      .mockImplementation(async (_id, cursor, status = 'all') => {
+        if (cursor) {
+          return new Promise<{ runs: ExecutionRun[]; nextCursor: string | null }>((_resolve, reject) => {
+            rejectOlder = reject;
+          });
+        }
+        return {
+          runs: status === 'completed' ? [liveRun] : [historicalRun],
+          nextCursor: status === 'all' ? 'older-cursor' : null,
+        };
+      });
+    render(<ExecutionPanel />);
+    fireEvent.click(screen.getByRole('tab', { name: 'History' }));
+    await screen.findByRole('button', { name: 'Load older runs' });
+    fireEvent.click(screen.getByRole('button', { name: 'Load older runs' }));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    const olderSignal = request.mock.calls[1][3];
+    expect(olderSignal?.aborted).toBe(false);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter history by status' }),
+      { target: { value: 'completed' } });
+    await screen.findByRole('button', { name: 'Set baseline for execution live_run' });
+    expect(olderSignal?.aborted).toBe(true);
+    rejectOlder(new DOMException('Cancelled older page', 'AbortError'));
+    await waitFor(() => expect(useExecutionStore.getState().historyRuns.map((run) => run._id)).toEqual(['live_run']));
+    expect(useExecutionStore.getState().historyMoreError).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry older runs' })).toBeNull();
+    expect(useExecutionStore.getState().currentRun?._id).toBe('live_run');
+  });
+
   it('aborts a pending request on leaving History and reloads cleanly when returning', async () => {
     setPersistedWorkflow();
     const request = vi.spyOn(api, 'listExecutionHistoryPage')
