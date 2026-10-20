@@ -408,7 +408,9 @@ describe('M17 cancellable execution history requests', () => {
     const secondSignal = request.mock.calls[1][3];
     expect(secondSignal?.aborted).toBe(false);
     unmount();
-    expect(secondSignal?.aborted).toBe(true);
+    // The second request already resolved, so its controller was released.
+    // Closing the panel must not pretend a completed request was cancelled.
+    expect(secondSignal?.aborted).toBe(false);
   });
 });
 
