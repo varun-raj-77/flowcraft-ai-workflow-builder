@@ -1,10 +1,10 @@
-import type { ExecutionRun, StepLog, StepStatus } from '@/types';
+import type { ExecutionRun, ExecutionHistorySummaryRun, StepLog, StepStatus } from '@/types';
 import { getRunSummary } from './executionInspector';
 
 export const INTERRUPTED_EXECUTION_ERROR = 'Execution interrupted after its worker lease expired. No steps were replayed.';
 export type HistoryStatusFilter = 'all' | ExecutionRun['status'];
 
-export function filterHistoryRuns(runs: readonly ExecutionRun[], status: HistoryStatusFilter): ExecutionRun[] {
+export function filterHistoryRuns(runs: readonly ExecutionHistorySummaryRun[], status: HistoryStatusFilter): ExecutionHistorySummaryRun[] {
   return status === 'all' ? [...runs] : runs.filter((run) => run.status === status);
 }
 
@@ -83,7 +83,7 @@ function validDuration(value: number | undefined): number | null {
 /** Read-only metadata comparison. Pinned graph identity is mandatory before
  * aligning nodes; labels/outputs/config/errors are deliberately not compared.
  */
-export function compareExecutionRuns(before: ExecutionRun, after: ExecutionRun): RunComparison {
+export function compareExecutionRuns(before: ExecutionHistorySummaryRun, after: ExecutionHistorySummaryRun): RunComparison {
   if (before.workflowId !== after.workflowId) throw new Error('Cannot compare executions from different workflows');
   const beforeSummary = getRunSummary(before);
   const afterSummary = getRunSummary(after);
