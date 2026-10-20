@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ExecutionRun, StepLog, ExecutionStatus } from '@/types';
+import type { ExecutionRun, ExecutionHistorySummaryRun, StepLog, ExecutionStatus } from '@/types';
 import type { InspectorTab } from '@/features/execution-viewer/executionInspector';
 
 /** Prevent unbounded in-memory payload accumulation while browsing historical runs. */
@@ -10,7 +10,7 @@ interface ExecutionState {
   currentRun: ExecutionRun | null;
   isRunning: boolean;
   lastError: string | null;
-  historyRuns: ExecutionRun[];
+  historyRuns: ExecutionHistorySummaryRun[];
   historyWorkflowId: string | null;
   historyFilter: 'all' | ExecutionStatus;
   selectedHistoricalRunId: string | null;
@@ -32,9 +32,9 @@ interface ExecutionState {
   clearExecution: () => void;
   setLastError: (error: string | null) => void;
   setHistoryLoading: (workflowId: string, filter?: 'all' | ExecutionStatus) => void;
-  setHistory: (workflowId: string, runs: ExecutionRun[], nextCursor?: string | null) => void;
+  setHistory: (workflowId: string, runs: ExecutionHistorySummaryRun[], nextCursor?: string | null) => void;
   setHistoryMoreLoading: (workflowId: string, cursor: string) => void;
-  appendHistoryPage: (workflowId: string, cursor: string, runs: ExecutionRun[], nextCursor: string | null) => void;
+  appendHistoryPage: (workflowId: string, cursor: string, runs: ExecutionHistorySummaryRun[], nextCursor: string | null) => void;
   setHistoryMoreError: (workflowId: string, cursor: string, error: string) => void;
   setHistoryError: (workflowId: string, error: string) => void;
   clearHistory: () => void;
