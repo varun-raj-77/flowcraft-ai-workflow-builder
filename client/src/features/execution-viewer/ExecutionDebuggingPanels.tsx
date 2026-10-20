@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { useExecutionStore } from '@/stores/executionStore';
 import { useUIStore } from '@/stores/uiStore';
-import type { ExecutionRun } from '@/types';
+import type { ExecutionRun, ExecutionHistorySummaryRun } from '@/types';
 import { diagnoseRun, compareExecutionRuns } from './executionDebugging';
 import { formatDuration } from './executionInspector';
 
@@ -26,7 +26,7 @@ export function ExecutionDiagnosis({ run }: { run: ExecutionRun }) {
 }
 
 export function RunComparisonPanel({ baseline, candidate, onClear }: {
-  baseline: ExecutionRun; candidate: ExecutionRun; onClear: () => void;
+  baseline: ExecutionHistorySummaryRun; candidate: ExecutionHistorySummaryRun; onClear: () => void;
 }) {
   const report = useMemo(() => compareExecutionRuns(baseline, candidate), [baseline, candidate]);
   return <section aria-label="Run comparison" className="border-b border-[var(--border-subtle)] bg-violet-500/5 px-4 py-3 text-xs text-[var(--text-secondary)]">
