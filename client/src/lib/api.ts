@@ -230,8 +230,8 @@ export async function diagnoseSimulation(workflowId: string, scenario: Simulatio
 }
 
 /** Get a specific execution run by ID. */
-export async function getExecution(runId: string): Promise<ExecutionRun> {
-  return request<ExecutionRun>(`/executions/run/${runId}`);
+export async function getExecution(runId: string, signal?: AbortSignal): Promise<ExecutionRun> {
+  return request<ExecutionRun>(`/executions/run/${runId}`, { signal });
 }
 
 /** Resolve and integrity-check the exact immutable definition used by a run. */
@@ -251,6 +251,8 @@ export async function listExecutionHistoryPage(
   const params = new URLSearchParams();
   if (cursor) params.set('cursor', cursor);
   if (status !== 'all') params.set('status', status);
+  // Opt into payload-free history metadata; backend defaults to legacy full records.
+  params.set('view', 'summary');
   const query = params.toString();
   return request<ExecutionHistoryPage>(`/executions/workflow/${workflowId}/page${query ? `?${query}` : ''}`, { signal });
 }
