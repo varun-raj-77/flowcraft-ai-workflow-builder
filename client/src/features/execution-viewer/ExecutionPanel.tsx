@@ -344,6 +344,7 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
   const setHistoryMoreError = useExecutionStore((state) => state.setHistoryMoreError);
   const clearHistory = useExecutionStore((state) => state.clearHistory);
   const requestInFlightForWorkflow = useRef<string | null>(null);
+  const activeHistoryRequest = useRef<AbortController | null>(null);
   const latestRequest = useRef(0);
   const [statusFilter, setStatusFilter] = useState<HistoryStatusFilter>('all');
   const [baselineId, setBaselineId] = useState<string | null>(null);
@@ -357,27 +358,41 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
     setCandidateId(null);
   }, [workflowId]);
 
+  // Abort obsolete network work when leaving a workflow/filter or closing History.
+  // Response identity checks remain as a second line of defence against stale mocks.
+  useEffect(() => () => {
+    latestRequest.current += 1;
+    activeHistoryRequest.current?.abort();
+    activeHistoryRequest.current = null;
+    requestInFlightForWorkflow.current = null;
+  }, [workflowId, statusFilter]);
+
   const loadHistory = useCallback(async (force = false) => {
     if (!workflowId) return;
     const queryKey = `${workflowId}:${statusFilter}`;
     if (requestInFlightForWorkflow.current === queryKey) return;
     if (!force && historyWorkflowId === workflowId && historyFilter === statusFilter
       && (historyStatus === 'idle' || historyStatus === 'error')) return;
+    activeHistoryRequest.current?.abort();
+    const controller = new AbortController();
+    activeHistoryRequest.current = controller;
     const requestId = ++latestRequest.current;
     requestInFlightForWorkflow.current = queryKey;
     setHistoryLoading(workflowId, statusFilter);
     try {
-      const page = await api.listExecutionHistoryPage(workflowId, null, statusFilter);
+      const page = await api.listExecutionHistoryPage(workflowId, null, statusFilter, controller.signal);
       if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId
         && useExecutionStore.getState().historyFilter === statusFilter) {
         setHistory(workflowId, page.runs, page.nextCursor);
       }
     } catch (error) {
-      if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId
+      if (!controller.signal.aborted && requestId === latestRequest.current
+        && useWorkflowStore.getState().meta?._id === workflowId
         && useExecutionStore.getState().historyFilter === statusFilter) {
         setHistoryError(workflowId, api.getApiErrorMessage(error, 'Unable to load execution history. Please try again.'));
       }
     } finally {
+      if (activeHistoryRequest.current === controller) activeHistoryRequest.current = null;
       if (requestId === latestRequest.current && requestInFlightForWorkflow.current === queryKey) {
         requestInFlightForWorkflow.current = null;
       }
@@ -388,24 +403,29 @@ function HistoryView({ workflowId, now }: { workflowId?: string; now: number }) 
     if (!workflowId || historyWorkflowId !== workflowId || historyFilter !== statusFilter || !historyNextCursor
       || historyStatus !== 'idle' || historyMoreStatus === 'loading'
       || requestInFlightForWorkflow.current !== null) return;
+    activeHistoryRequest.current?.abort();
+    const controller = new AbortController();
+    activeHistoryRequest.current = controller;
     const requestId = ++latestRequest.current;
     const cursor = historyNextCursor;
     const queryKey = `${workflowId}:${statusFilter}:${cursor}`;
     requestInFlightForWorkflow.current = queryKey;
     setHistoryMoreLoading(workflowId, cursor);
     try {
-      const page = await api.listExecutionHistoryPage(workflowId, cursor, statusFilter);
+      const page = await api.listExecutionHistoryPage(workflowId, cursor, statusFilter, controller.signal);
       if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId
         && useExecutionStore.getState().historyFilter === statusFilter) {
         appendHistoryPage(workflowId, cursor, page.runs, page.nextCursor);
       }
     } catch (error) {
-      if (requestId === latestRequest.current && useWorkflowStore.getState().meta?._id === workflowId
+      if (!controller.signal.aborted && requestId === latestRequest.current
+        && useWorkflowStore.getState().meta?._id === workflowId
         && useExecutionStore.getState().historyFilter === statusFilter) {
         setHistoryMoreError(workflowId, cursor,
           api.getApiErrorMessage(error, 'Unable to load older executions. Please try again.'));
       }
     } finally {
+      if (activeHistoryRequest.current === controller) activeHistoryRequest.current = null;
       if (requestId === latestRequest.current && requestInFlightForWorkflow.current === queryKey) {
         requestInFlightForWorkflow.current = null;
       }
