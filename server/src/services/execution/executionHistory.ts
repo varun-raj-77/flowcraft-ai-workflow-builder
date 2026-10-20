@@ -4,6 +4,12 @@ import { Workflow } from '../../models/Workflow.model';
 import { ExecutionRun, type IExecutionRun } from '../../models/ExecutionRun.model';
 
 export const EXECUTION_HISTORY_PAGE_SIZE = 20;
+/** Bound MongoDB work on old/high-volume histories; not a client-side HTTP timeout. */
+export const EXECUTION_HISTORY_QUERY_TIMEOUT_MS = 4_000;
+/** Preserve the existing history contract without accidentally selecting future private fields. */
+export const EXECUTION_HISTORY_PUBLIC_FIELDS =
+  '_id workflowId retryOfRunId workflowRevisionId workflowRevision definitionHash ' +
+  'userId status startedAt completedAt triggerType error stepLogs executionOrder createdAt updatedAt';
 const MAX_CURSOR_LENGTH = 160;
 export type ExecutionHistoryFilter = 'all' | 'running' | 'completed' | 'failed' | 'cancelled';
 const STATUSES = new Set<ExecutionHistoryFilter>(['all', 'running', 'completed', 'failed', 'cancelled']);
@@ -106,11 +112,23 @@ export async function getOwnedExecutionHistoryPage(
     { createdAt: { $lt: cursor.createdAt } },
     { createdAt: cursor.createdAt, _id: { $lt: cursor.id } },
   ] } : {};
-  const rows = await ExecutionRun.find({ workflowId, userId, ...(status === 'all' ? {} : { status }), ...before })
-    .sort({ createdAt: -1, _id: -1 })
-    .limit(limit + 1)
-    .select('-leaseOwner -leaseHeartbeatAt -leaseExpiresAt')
-    .lean() as unknown as HistoryRow[];
+  let rows: HistoryRow[];
+  try {
+    rows = await ExecutionRun.find({ workflowId, userId, ...(status === 'all' ? {} : { status }), ...before })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .select(EXECUTION_HISTORY_PUBLIC_FIELDS)
+      .maxTimeMS(EXECUTION_HISTORY_QUERY_TIMEOUT_MS)
+      .lean() as unknown as HistoryRow[];
+  } catch (error) {
+    // MongoDB code 50 means the server aborted an expensive query. Never echo
+    // its error details or retry a query automatically under heavy load.
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 50) {
+      throw new AppError(503, 'HISTORY_QUERY_TIMEOUT',
+        'Execution history is temporarily busy. Please retry.');
+    }
+    throw error;
+  }
   const runs = rows.slice(0, limit);
   return {
     runs,

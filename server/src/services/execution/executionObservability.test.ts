@@ -19,6 +19,7 @@ vi.mock('../../models/ExecutionRun.model', () => ({
 
 import {
   EXECUTION_DIAGNOSTICS_LIMIT,
+  assessHistoryIndexReadiness,
   checkRetryReadiness,
   getOwnedExecutionDiagnostics,
   isRetryIndexReady,
@@ -32,6 +33,8 @@ const validIndex = {
   key: { retryOfRunId: 1 }, unique: true,
   partialFilterExpression: { retryOfRunId: { $type: 'objectId' } },
 };
+const unfilteredHistoryIndex = { key: { workflowId: 1, userId: 1, createdAt: -1, _id: -1 } };
+const filteredHistoryIndex = { key: { workflowId: 1, userId: 1, status: 1, createdAt: -1, _id: -1 } };
 
 function rows(result: unknown[]) {
   const lean = vi.fn().mockResolvedValue(result);
@@ -126,6 +129,7 @@ describe('M11 owner-isolated, bounded execution diagnostics', () => {
     expect(query.limit).toHaveBeenCalledWith(50);
     expect(query.select).toHaveBeenCalledWith('status error retryOfRunId startedAt completedAt leaseExpiresAt');
     expect(report.retryReadiness).toBe('ready');
+    expect(report.historyIndexReadiness).toEqual({ unfiltered: 'not_ready', filtered: 'not_ready' });
     expect(report.counts.expiredRunningLeases).toBe(1);
     expect(JSON.stringify(report)).not.toMatch(/secret do not expose|private|personal|userId|workflowId/);
     expect(db.indexes).toHaveBeenCalledTimes(1);
@@ -135,6 +139,7 @@ describe('M11 owner-isolated, bounded execution diagnostics', () => {
     db.indexes.mockRejectedValueOnce(new Error('production DB connection string'));
     const report = await getOwnedExecutionDiagnostics(workflowId, 'owner', now);
     expect(report.retryReadiness).toBe('unavailable');
+    expect(report.historyIndexReadiness).toEqual({ unfiltered: 'unavailable', filtered: 'unavailable' });
     expect(JSON.stringify(report)).not.toContain('production DB connection string');
     expect(db.find).toHaveBeenCalledTimes(1);
   });
@@ -147,5 +152,49 @@ describe('M11 owner-isolated, bounded execution diagnostics', () => {
     }));
     expect(log.mock.calls.flat().join('')).not.toMatch(/runId|label|secret|userId|workflowId/);
     log.mockRestore();
+  });
+});
+
+describe('M16 read-only execution history index readiness', () => {
+  it('requires both precise compound index shapes, not a weak prefix', () => {
+    expect(assessHistoryIndexReadiness([])).toEqual({
+      unfiltered: 'not_ready', filtered: 'not_ready',
+    });
+    expect(assessHistoryIndexReadiness([{ key: { workflowId: 1, createdAt: -1 } }]))
+      .toEqual({ unfiltered: 'not_ready', filtered: 'not_ready' });
+    expect(assessHistoryIndexReadiness([unfilteredHistoryIndex]))
+      .toEqual({ unfiltered: 'ready', filtered: 'not_ready' });
+    expect(assessHistoryIndexReadiness([unfilteredHistoryIndex, filteredHistoryIndex]))
+      .toEqual({ unfiltered: 'ready', filtered: 'ready' });
+  });
+
+  it('rejects partial, hidden, sparse and collation-dependent indexes as proof of readiness', () => {
+    for (const modification of [
+      { partialFilterExpression: { status: 'failed' } }, { hidden: true },
+      { sparse: true }, { collation: { locale: 'en' } },
+    ]) {
+      expect(assessHistoryIndexReadiness([{ ...filteredHistoryIndex, ...modification }]).filtered)
+        .toBe('not_ready');
+    }
+    expect(assessHistoryIndexReadiness([
+      { key: { workflowId: 1, userId: 1, createdAt: -1, status: 1, _id: -1 } },
+    ]).filtered).toBe('not_ready');
+  });
+
+  it('reports both index states with the existing one-read owner-scoped diagnostics query', async () => {
+    db.indexes.mockResolvedValueOnce([validIndex, unfilteredHistoryIndex, filteredHistoryIndex]);
+    const report = await getOwnedExecutionDiagnostics(workflowId, 'owner', now);
+    expect(report.retryReadiness).toBe('ready');
+    expect(report.historyIndexReadiness).toEqual({ unfiltered: 'ready', filtered: 'ready' });
+    expect(db.indexes).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(report)).not.toMatch(/retryOfRunId|partialFilterExpression|collection|mongo|secret/);
+  });
+
+  it('never reads index metadata for a workflow owned by another account', async () => {
+    db.workflowExists.mockResolvedValueOnce(null);
+    await expect(getOwnedExecutionDiagnostics(workflowId, 'unauthorized', now))
+      .rejects.toMatchObject({ statusCode: 404, code: 'WORKFLOW_NOT_FOUND' });
+    expect(db.indexes).not.toHaveBeenCalled();
+    expect(db.find).not.toHaveBeenCalled();
   });
 });
