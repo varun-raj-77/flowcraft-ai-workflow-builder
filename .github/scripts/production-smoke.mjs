@@ -1,3 +1,4 @@
+import { requireLiveSmokeConsent } from './live-smoke-consent.mjs';
 // Live, disposable smoke test for the publicly documented FlowCraft demo workspace.
 // Only the workflows created by this process may be deleted.
 const origin = process.env.FLOWCRAFT_BASE_URL || 'https://flowcraft-ai-workflow-builder.vercel.app';
@@ -70,6 +71,8 @@ function graph(delayMs = 1000) {
 }
 
 async function main() {
+  // Fail closed before calling login or any other production endpoint.
+  requireLiveSmokeConsent(process.env);
   if (!username || !password) throw new Error('Smoke credentials are not configured.');
   const login = await api('/api/auth/login', 'POST', { email: username, password });
   requireStatus(login, 200, 'Login');
