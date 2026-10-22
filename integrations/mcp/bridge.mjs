@@ -135,7 +135,7 @@ export function createHandler({env=process.env,fetchImpl=fetch}={}){
   if(msg.method==='ping'&&version!==CURRENT)return {jsonrpc:'2.0',id,result:{}};
   if(msg.method==='tools/list'){
    if(p.cursor!==undefined)return error(id,-32602,'Cursor not supported');
-   return {jsonrpc:'2.0',id,result:{...(version===LEGACY?{}:{resultType:'complete',ttlMs:300000,cacheScope:'public'}),tools:listTools(env)}};
+   return {jsonrpc:'2.0',id,result:{...(version===CURRENT?{resultType:'complete',ttlMs:300000,cacheScope:'public'}:{}),tools:listTools(env)}};
   }
   if(msg.method==='tools/call'){
    if(typeof p.name!=='string'||!listTools(env).some(t=>t.name===p.name))return error(id,-32602,'Unknown or disabled tool');
@@ -144,10 +144,10 @@ export function createHandler({env=process.env,fetchImpl=fetch}={}){
    requests.push(now);
    try{
     const data=await callTool(p.name,p.arguments??{},{env,fetchImpl});
-    return {jsonrpc:'2.0',id,result:{...(version===LEGACY?{}:{resultType:'complete'}),content:[{type:'text',text:JSON.stringify(data)}],isError:false}};
+    return {jsonrpc:'2.0',id,result:{...(version===CURRENT?{resultType:'complete'}:{}),content:[{type:'text',text:JSON.stringify(data)}],isError:false}};
    }catch(e){
     const safe=e instanceof Error&&/^[A-Z_0-9]+$/.test(e.message)?e.message:'TOOL_UNAVAILABLE';
-    return {jsonrpc:'2.0',id,result:{...(version===LEGACY?{}:{resultType:'complete'}),content:[{type:'text',text:safe}],isError:true}};
+    return {jsonrpc:'2.0',id,result:{...(version===CURRENT?{resultType:'complete'}:{}),content:[{type:'text',text:safe}],isError:true}};
    }
   }
   return error(id,-32601,'Method not found');
