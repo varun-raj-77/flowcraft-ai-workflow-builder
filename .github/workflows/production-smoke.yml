@@ -1,11 +1,13 @@
 name: Production smoke (disposable demo workflow)
-# Verify every visible AI Builder prompt with the live provider, plus persistence, auth and execution.
-
+# Performs real workflow writes, executions, deletions and provider calls.
+# NEVER run from a pull request, push or schedule. Manual explicit opt-in only.
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/production-smoke.yml'
   workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type I_APPROVE_PRODUCTION_SMOKE_MUTATIONS to authorize live changes'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,12 +17,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
+      - name: Verify manual production-mutation approval
+        env:
+          FLOWCRAFT_LIVE_SMOKE_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [ "$FLOWCRAFT_LIVE_SMOKE_CONFIRMATION" != "I_APPROVE_PRODUCTION_SMOKE_MUTATIONS" ]; then
+            echo "Refusing state-changing production smoke without explicit approval."
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Check live production app
         env:
+          FLOWCRAFT_LIVE_SMOKE_CONFIRMATION: ${{ inputs.confirmation }}
           FLOWCRAFT_BASE_URL: https://flowcraft-ai-workflow-builder.vercel.app
           FLOWCRAFT_SMOKE_EMAIL: demo@flowcraft.app
           # Only the already-public, unprivileged demo credentials from README.
