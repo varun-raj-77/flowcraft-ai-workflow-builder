@@ -1,7 +1,7 @@
 name: M7 production smoke (manual, read-only)
 
 # Intentionally no push, pull_request, schedule or deployment triggers.
-# The pre-existing broad production-smoke workflow is separate and untouched.
+# The separate legacy mutation-capable workflow now requires explicit manual consent.
 on:
   workflow_dispatch:
     inputs:
