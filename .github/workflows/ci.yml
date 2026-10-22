@@ -35,6 +35,9 @@ jobs:
       - name: Test manual production smoke harness (offline, no network)
         run: node --test .github/scripts/read-only-production-smoke.test.mjs
 
+      - name: Test release-alignment audit (offline, no network)
+        run: node --test .github/scripts/release-readiness.test.mjs
+
       - name: Install root dependencies
         run: npm ci
 
@@ -64,7 +67,9 @@ jobs:
   e2e:
     name: Playwright critical journeys
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Browser downloads can stall during upstream incidents. Keep an explicit
+    # upper bound, and report OS dependencies separately from browser fetching.
+    timeout-minutes: 25
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -80,9 +85,15 @@ jobs:
         run: npm ci
         working-directory: client
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Linux browser dependencies
+        run: npx playwright install-deps chromium
         working-directory: client
+        timeout-minutes: 10
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+        working-directory: client
+        timeout-minutes: 18
 
       - name: Run browser tests
         run: npm run test:e2e
