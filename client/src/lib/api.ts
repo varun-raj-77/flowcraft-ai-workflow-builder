@@ -17,6 +17,7 @@ import type {
   SimulationResult,
   SimulationDiagnosis,
 } from '@/types';
+import { toHistorySummaryRun } from './historySummary';
 
 // All browser API traffic is same-origin. The App Router proxy forwards /api
 // server-side, so the session cookie remains first-party.
@@ -254,7 +255,25 @@ export async function listExecutionHistoryPage(
   // Opt into payload-free history metadata; backend defaults to legacy full records.
   params.set('view', 'summary');
   const query = params.toString();
-  return request<ExecutionHistoryPage>(`/executions/workflow/${workflowId}/page${query ? `?${query}` : ''}`, { signal });
+  const page = await request<ExecutionHistoryPage>(`/executions/workflow/${workflowId}/page${query ? `?${query}` : ''}`, { signal });
+  // Fail closed on malformed or cross-workflow history responses. Crucially, strip
+  // runtime payloads even when an older Railway backend ignores view=summary.
+  if (!page || !Array.isArray(page.runs) || page.runs.length > 20
+    || (page.nextCursor !== null && typeof page.nextCursor !== 'string')
+    || page.runs.some((run) => !run || run.workflowId !== workflowId
+      || typeof run._id !== 'string' || typeof run.userId !== 'string'
+      || !['running', 'completed', 'failed', 'cancelled'].includes(run.status)
+      || !['manual', 'ai_generated'].includes(run.triggerType)
+      || typeof run.startedAt !== 'string' || typeof run.createdAt !== 'string'
+      || typeof run.updatedAt !== 'string'
+      || !Array.isArray(run.stepLogs) || !Array.isArray(run.executionOrder)
+      || !run.executionOrder.every((nodeId) => typeof nodeId === 'string')
+      || run.stepLogs.some((step) => !step || typeof step.nodeId !== 'string'
+        || typeof step.nodeLabel !== 'string' || typeof step.nodeType !== 'string'
+        || !['pending', 'running', 'success', 'failed', 'skipped'].includes(step.status)))) {
+    throw new ApiError(200, 'INVALID_HISTORY_RESPONSE', 'The history response could not be verified. Please retry.');
+  }
+  return { runs: page.runs.map(toHistorySummaryRun), nextCursor: page.nextCursor };
 }
 
 /** List execution history for a workflow. */
