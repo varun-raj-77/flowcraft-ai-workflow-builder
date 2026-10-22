@@ -113,6 +113,60 @@ describe('shared API client', () => {
     );
   });
 
+  it('drops full payloads returned by an older backend that ignores view=summary', async () => {
+    const fullRun = {
+      _id: 'run-1', workflowId: 'workflow-1', userId: 'user-1',
+      status: 'failed', startedAt: '2026-10-20T10:00:00.000Z',
+      triggerType: 'manual', createdAt: '2026-10-20T10:00:00.000Z',
+      updatedAt: '2026-10-20T10:00:01.000Z', executionOrder: ['node-1'],
+      error: 'root-secret-CANARY',
+      extraFutureField: 'future-secret-CANARY',
+      stepLogs: [{ nodeId: 'node-1', nodeType: 'api_call', nodeLabel: 'API',
+        status: 'failed', durationMs: 50, error: 'step-secret-CANARY',
+        input: { token: 'input-secret-CANARY' }, output: { token: 'output-secret-CANARY' },
+        diagnostic: { secret: 'diagnostic-CANARY' }, futureField: 'step-future-CANARY' }],
+    };
+    const request = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ data: { runs: [fullRun], nextCursor: 'older-cursor' } }), { status: 200 },
+    ));
+    vi.stubGlobal('fetch', request);
+    const page = await listExecutionHistoryPage('workflow-1');
+    expect(page.nextCursor).toBe('older-cursor');
+    expect(page.runs[0].stepLogs).toEqual([{ nodeId: 'node-1', nodeType: 'api_call',
+      nodeLabel: 'API', status: 'failed', durationMs: 50 }]);
+    expect(JSON.stringify(page)).not.toMatch(/CANARY|extraFutureField|diagnostic|error|input|output/);
+    expect(request).toHaveBeenCalledWith(
+      '/api/executions/workflow/workflow-1/page?view=summary',
+      expect.objectContaining({ credentials: 'include', cache: 'no-store' }),
+    );
+  });
+
+  it('rejects malformed, oversized and cross-workflow history pages without storing rows', async () => {
+    const validRun = {
+      _id: 'run-1', workflowId: 'workflow-1', userId: 'user-1',
+      status: 'completed', startedAt: '2026-10-20T10:00:00Z', triggerType: 'manual',
+      createdAt: '2026-10-20T10:00:00Z', updatedAt: '2026-10-20T10:00:00Z',
+      executionOrder: [], stepLogs: [],
+    };
+    const invalidPages = [
+      undefined,
+      { runs: 'not-an-array', nextCursor: null },
+      { runs: [validRun], nextCursor: { $gt: '' } },
+      { runs: [{ ...validRun, workflowId: 'another-workflow' }], nextCursor: null },
+      { runs: [{ ...validRun, stepLogs: null }], nextCursor: null },
+      { runs: Array.from({ length: 21 }, () => validRun), nextCursor: null },
+    ];
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify({ data: invalidPages.shift() }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    for (let i = 0; i < 6; i++) {
+      await expect(listExecutionHistoryPage('workflow-1')).rejects.toMatchObject({
+        code: 'INVALID_HISTORY_RESPONSE',
+      });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
   it('forwards an AbortSignal to the same-origin history request without changing existing query semantics', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ data: { runs: [], nextCursor: null } }), { status: 200 },
