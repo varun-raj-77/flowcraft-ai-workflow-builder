@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { resolveJwtSecret } from './jwtSecret';
 
 dotenv.config();
 
@@ -35,7 +36,7 @@ function loadEnv(): Environment {
     MONGODB_URI,
     CLIENT_URL: clientUrl,
     TRUSTED_ORIGINS: trustedOrigins,
-    JWT_SECRET: JWT_SECRET || 'dev-secret-change-in-production',
+    JWT_SECRET: resolveJwtSecret(NODE_ENV || 'development', JWT_SECRET),
     ANTHROPIC_API_KEY,
     ANTHROPIC_MODEL: ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
     DEMO_ACCOUNT_EMAIL: (DEMO_ACCOUNT_EMAIL || 'demo@flowcraft.app').trim().toLowerCase(),
