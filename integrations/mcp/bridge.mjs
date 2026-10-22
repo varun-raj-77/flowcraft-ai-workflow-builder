@@ -114,16 +114,25 @@ export async function callTool(name,args,{env=process.env,fetchImpl=fetch}={}){
 const error=(id,code,message,data)=>({jsonrpc:'2.0',id,error:{code,message,...(data?{data}:{})}});
 export function createHandler({env=process.env,fetchImpl=fetch}={}){
  const requests=[];
+ let legacyInitialized=false;
  return async function handle(msg){
   if(!obj(msg)||msg.jsonrpc!=='2.0'||typeof msg.method!=='string')return error(null,-32600,'Invalid Request');
   if(!Object.hasOwn(msg,'id'))return null; // Notification; no response.
   const id=msg.id,p=obj(msg.params)?msg.params:{};
   if(!(typeof id==='string'||typeof id==='number'||id===null))return error(null,-32600,'Invalid Request');
   const version=p._meta?.['io.modelcontextprotocol/protocolVersion'];
-  if(msg.method!=='initialize'&&version!==undefined&&!versions.includes(version))return error(id,-32602,'Unsupported protocol version',{supportedVersions:versions});
+  // Modern requests require a per-request protocol envelope. Legacy stdio clients
+  // omit it after a successful initialize handshake.
+  if(msg.method==='initialize'){
+   if(p.protocolVersion!==LEGACY)return error(id,-32022,'Unsupported protocol version',{supported:[LEGACY],requested:String(p.protocolVersion??'missing')});
+   legacyInitialized=true;
+   return {jsonrpc:'2.0',id,result:{protocolVersion:LEGACY,capabilities:{tools:{}},serverInfo:meta}};
+  }
+  if(version!==undefined&&!versions.includes(version))return error(id,-32022,'Unsupported protocol version',{supported:versions,requested:String(version)});
+  if(version===CURRENT&&!obj(p._meta?.['io.modelcontextprotocol/clientCapabilities']))return error(id,-32602,'Missing client capabilities');
   if(msg.method==='server/discover')return {jsonrpc:'2.0',id,result:{resultType:'complete',supportedVersions:versions,capabilities:{tools:{}},_meta:{'io.modelcontextprotocol/serverInfo':meta},ttlMs:300000,cacheScope:'public'}};
-  if(msg.method==='initialize')return {jsonrpc:'2.0',id,result:{protocolVersion:LEGACY,capabilities:{tools:{}},serverInfo:meta}};
-  if(msg.method==='ping')return {jsonrpc:'2.0',id,result:{}};
+  if(version===undefined&&!legacyInitialized)return error(id,-32022,'Unsupported protocol version',{supported:versions,requested:'missing'});
+  if(msg.method==='ping'&&version!==CURRENT)return {jsonrpc:'2.0',id,result:{}};
   if(msg.method==='tools/list'){
    if(p.cursor!==undefined)return error(id,-32602,'Cursor not supported');
    return {jsonrpc:'2.0',id,result:{...(version===LEGACY?{}:{resultType:'complete',ttlMs:300000,cacheScope:'public'}),tools:listTools(env)}};
