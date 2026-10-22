@@ -38,6 +38,9 @@ jobs:
       - name: Test release-alignment audit (offline, no network)
         run: node --test .github/scripts/release-readiness.test.mjs
 
+      - name: Test MCP stdio adapter and execution safeguards (offline, no network)
+        run: node --test integrations/mcp/bridge.test.mjs
+
       - name: Test production-smoke mutation guard (offline, no network)
         run: node --test .github/scripts/live-smoke-consent.test.mjs
 
