@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ExecutionRun, ExecutionHistorySummaryRun, StepLog, ExecutionStatus } from '@/types';
 import type { InspectorTab } from '@/features/execution-viewer/executionInspector';
+import { toHistorySummaryRun } from '@/lib/historySummary';
 
 /** Prevent unbounded in-memory payload accumulation while browsing historical runs. */
 export const MAX_LOADED_HISTORY_RUNS = 200;
@@ -116,7 +117,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
 
   setHistory: (historyWorkflowId, incomingRuns, nextCursor = null) =>
     set((state) => {
-      const historyRuns = incomingRuns.slice(0, MAX_LOADED_HISTORY_RUNS);
+      const historyRuns = incomingRuns.slice(0, MAX_LOADED_HISTORY_RUNS).map(toHistorySummaryRun);
       return {
         historyWorkflowId,
         historyRuns,
@@ -146,7 +147,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
       if (seen.has(run._id)) return false;
       seen.add(run._id); return true;
     });
-    const historyRuns = [...state.historyRuns, ...additions].slice(0, MAX_LOADED_HISTORY_RUNS);
+    const historyRuns = [...state.historyRuns, ...additions.map(toHistorySummaryRun)].slice(0, MAX_LOADED_HISTORY_RUNS);
     const historyCapReached = historyRuns.length >= MAX_LOADED_HISTORY_RUNS && nextCursor !== null;
     return {
       historyRuns,
