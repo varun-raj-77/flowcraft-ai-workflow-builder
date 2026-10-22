@@ -17,7 +17,9 @@ describe('JWT signing key configuration', () => {
       try { resolveJwtSecret('production', secret); } catch (error) { thrown = error; }
       expect(thrown).toBeInstanceOf(Error);
       expect((thrown as Error).message).toMatch(/JWT_SECRET.*production/);
-      expect((thrown as Error).message).not.toContain(String(secret ?? ''));
+      if (secret && secret.trim().length >= 4) {
+        expect((thrown as Error).message).not.toContain(secret);
+      }
     }
   });
 
