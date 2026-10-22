@@ -21,18 +21,20 @@ export function toHistorySummaryRun(run: ExecutionRun | ExecutionHistorySummaryR
     triggerType: run.triggerType,
     createdAt: run.createdAt,
     updatedAt: run.updatedAt,
-    executionOrder: [...run.executionOrder],
-    ...(run.retryOfRunId !== undefined ? { retryOfRunId: run.retryOfRunId } : {}),
-    ...(run.workflowRevisionId !== undefined ? { workflowRevisionId: run.workflowRevisionId } : {}),
-    ...(run.workflowRevision !== undefined ? { workflowRevision: run.workflowRevision } : {}),
-    ...(run.definitionHash !== undefined ? { definitionHash: run.definitionHash } : {}),
-    ...(run.completedAt !== undefined ? { completedAt: run.completedAt } : {}),
+    executionOrder: run.executionOrder.filter((nodeId): nodeId is string => typeof nodeId === 'string'),
+    ...(typeof run.retryOfRunId === 'string' ? { retryOfRunId: run.retryOfRunId } : {}),
+    ...(typeof run.workflowRevisionId === 'string' ? { workflowRevisionId: run.workflowRevisionId } : {}),
+    ...(typeof run.workflowRevision === 'number' && Number.isSafeInteger(run.workflowRevision)
+      ? { workflowRevision: run.workflowRevision } : {}),
+    ...(typeof run.definitionHash === 'string' ? { definitionHash: run.definitionHash } : {}),
+    ...(typeof run.completedAt === 'string' ? { completedAt: run.completedAt } : {}),
     stepLogs: run.stepLogs.map((step) => ({
       nodeId: step.nodeId,
       nodeType: step.nodeType,
       nodeLabel: step.nodeLabel,
       status: step.status,
-      ...(step.durationMs !== undefined ? { durationMs: step.durationMs } : {}),
+      ...(typeof step.durationMs === 'number' && Number.isFinite(step.durationMs) && step.durationMs >= 0
+        ? { durationMs: step.durationMs } : {}),
     })),
   };
 }
