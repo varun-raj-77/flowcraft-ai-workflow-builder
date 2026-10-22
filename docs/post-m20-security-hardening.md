@@ -54,8 +54,9 @@ either production smoke workflow automatically from CI or a PR.
   existing test, typecheck, lint, build and Playwright suites.
 - An authenticated end-to-end production journey remains unverified until
   Railway's deployment commit and access are independently established.
-- Credentials exposed in previous screenshots must be revoked or rotated
-  through provider account controls. This change does not rotate them.
+- Review API-provider credentials for compromise or accidental disclosure;
+  rotate affected keys through provider account controls. This change does not
+  rotate any credentials.
 
 Release guard: review exact PR head, GitHub checks, and Vercel preview. Obtain
 **separate merge approval**, then verify post-merge GitHub and Vercel.
