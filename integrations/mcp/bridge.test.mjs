@@ -30,9 +30,32 @@ test('modern discovery, deterministic tool catalog and legacy initialize',async(
  assert.equal((await h(rpc('tools/call',{name:'run_workflow'}))).error.code,-32602);
  const old=await h({jsonrpc:'2.0',method:'initialize',id:2,params:{protocolVersion:'2025-11-25'}});
  assert.equal(old.result.protocolVersion,'2025-11-25');
+ const legacyTools=await h({jsonrpc:'2.0',method:'tools/list',id:4,params:{}});
+ assert.equal(legacyTools.result.tools.length,3);
+ assert.equal(Object.hasOwn(legacyTools.result,'resultType'),false);
  const newer=await h({jsonrpc:'2.0',id:3,method:'tools/list',params:{_meta:{'io.modelcontextprotocol/protocolVersion':'future'}}});
- assert.equal(newer.error.code,-32602);
+ assert.equal(newer.error.code,-32022);
+ assert.deepEqual(newer.error.data.supported,['2026-07-28','2025-11-25']);
+ assert.equal(newer.error.data.requested,'future');
+ assert.equal((await h(rpc('ping'))).error.code,-32601);
  assert.equal(listTools({FLOWCRAFT_MCP_ENABLE_RUNS:'1'}).length,4);
+});
+test('modern requests must carry an envelope; legacy requires initialization',async()=>{
+ const h=createHandler({env:{}});
+ const noHandshake=await h({jsonrpc:'2.0',id:1,method:'tools/list',params:{}});
+ assert.equal(noHandshake.error.code,-32022);
+ assert.equal(noHandshake.error.data.requested,'missing');
+ const withoutCapabilities=await h({jsonrpc:'2.0',id:2,method:'tools/list',params:{
+  _meta:{'io.modelcontextprotocol/protocolVersion':'2026-07-28'}
+ }});
+ assert.equal(withoutCapabilities.error.code,-32602);
+ const unsupportedInit=await h({jsonrpc:'2.0',id:3,method:'initialize',params:{protocolVersion:'2024-11-05'}});
+ assert.equal(unsupportedInit.error.code,-32022);
+ const modern=await h(rpc('tools/list'));
+ assert.equal(modern.result.resultType,'complete');
+ const legacyInit=await h({jsonrpc:'2.0',id:4,method:'initialize',params:{protocolVersion:'2025-11-25'}});
+ assert.equal(legacyInit.result.protocolVersion,'2025-11-25');
+ assert.deepEqual((await h({jsonrpc:'2.0',id:5,method:'ping',params:{}})).result,{});
 });
 test('all three read tools redact nested runtime/source secrets',async()=>{
  const calls=[];
