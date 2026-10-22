@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdir, open } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 
 // Isolated local stdio adapter: no new API route, MongoDB schema, or browser changes.
 // The cookie token is provided locally by the operator and never echoed to MCP.
@@ -94,7 +94,7 @@ export async function callTool(name,args,{env=process.env,fetchImpl=fetch}={}){
   const allow=(env.FLOWCRAFT_MCP_RUN_WORKFLOW_IDS||'').split(',').map(s=>s.trim().toLowerCase());
   if(!allow.every(s=>objectId.test(s))||!allow.includes(id))throw Error('NOT_ALLOWLISTED');
   const dir=env.FLOWCRAFT_MCP_JOURNAL_DIR;
-  if(typeof dir!=='string'||!dir.startsWith('/'))throw Error('ABSOLUTE_JOURNAL_REQUIRED');
+  if(typeof dir!=='string'||!isAbsolute(dir))throw Error('ABSOLUTE_JOURNAL_REQUIRED');
   const trusted=origin(env.FLOWCRAFT_MCP_TRUSTED_ORIGIN);
   if(!Number.isSafeInteger(args.expectedRevision)||args.expectedRevision<1||
      typeof args.expectedDefinitionHash!=='string'||!hash.test(args.expectedDefinitionHash)||
