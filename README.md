@@ -385,7 +385,7 @@ The frontend and backend run as separate services during local development.
 PORT=3001
 MONGODB_URI=your_mongodb_connection_string
 CLIENT_URL=http://localhost:3000
-JWT_SECRET=replace_with_a_strong_secret
+JWT_SECRET=generate_a_unique_random_secret_at_least_32_characters
 ANTHROPIC_API_KEY=your_anthropic_api_key
 DEMO_ACCOUNT_EMAIL=demo@flowcraft.app
 ```
@@ -399,6 +399,8 @@ TRUSTED_ORIGINS=https://your-frontend.example.com
 ```
 
 `NEXT_PUBLIC_*` values are embedded into the browser bundle at build time. Updating them requires a new frontend deployment.
+
+Production requires an explicitly configured, unique `JWT_SECRET` of at least 32 characters; the backend refuses to start with the development fallback or a missing/short key. Use a cryptographically generated value, never commit it, and plan for existing sessions to expire if rotating it. The mutation-capable legacy production smoke workflow is manual-only and requires exact confirmation; prefer the separate read-only smoke workflow for safer availability checks. See [post-M20 security hardening](docs/post-m20-security-hardening.md).
 
 ## API Overview
 
