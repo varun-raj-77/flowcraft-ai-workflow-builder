@@ -38,6 +38,9 @@ jobs:
       - name: Test release-alignment audit (offline, no network)
         run: node --test .github/scripts/release-readiness.test.mjs
 
+      - name: Test MCP stdio adapter and execution safeguards (offline, no network)
+        run: node --test integrations/mcp/bridge.test.mjs
+
       - name: Test production-smoke mutation guard (offline, no network)
         run: node --test .github/scripts/live-smoke-consent.test.mjs
 
@@ -70,8 +73,10 @@ jobs:
   e2e:
     name: Playwright critical journeys
     runs-on: ubuntu-latest
-    # Browser downloads can stall during upstream incidents. Keep an explicit
-    # upper bound, and report OS dependencies separately from browser fetching.
+    # Pinned to client/package-lock.json (Playwright 1.55.1).
+    # Bundled browsers and OS libs avoid unstable Ubuntu package mirrors.
+    container:
+      image: mcr.microsoft.com/playwright:v1.55.1-noble
     timeout-minutes: 25
     steps:
       - name: Check out repository
@@ -87,16 +92,6 @@ jobs:
       - name: Install client dependencies
         run: npm ci
         working-directory: client
-
-      - name: Install Linux browser dependencies
-        run: npx playwright install-deps chromium
-        working-directory: client
-        timeout-minutes: 10
-
-      - name: Install Playwright Chromium
-        run: npx playwright install chromium
-        working-directory: client
-        timeout-minutes: 18
 
       - name: Run browser tests
         run: npm run test:e2e
