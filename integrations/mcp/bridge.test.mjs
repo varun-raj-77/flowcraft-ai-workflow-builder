@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -157,4 +158,58 @@ test('stdio process emits protocol JSON only, no banner or console logs',async()
  const code=await new Promise((ok,fail)=>{child.on('close',ok);child.on('error',fail);});
  assert.equal(code,0);
  assert.deepEqual(lines.map(x=>x.id),[31,32]);
+});
+
+test('stdio client through local HTTP fixture preserves owner-session header and redacts metadata',async()=>{
+ const observed=[];
+ const fixture=createServer((req,res)=>{
+  observed.push({method:req.method,path:req.url,cookie:req.headers.cookie});
+  res.setHeader('content-type','application/json');
+  if(req.method!=='GET'||req.url!=='/api/workflows'){
+   res.statusCode=404;res.end(JSON.stringify({error:'NOT_FOUND'}));return;
+  }
+  res.end(JSON.stringify({data:[workflow]}));
+ });
+ await new Promise((resolve,reject)=>{
+  fixture.once('error',reject);
+  fixture.listen(0,'127.0.0.1',resolve);
+ });
+ let child;
+ try{
+  const address=fixture.address();
+  assert.ok(address&&typeof address==='object');
+  child=spawn(process.execPath,[new URL('./server.mjs',import.meta.url).pathname],{
+   stdio:['pipe','pipe','pipe'],
+   env:{...process.env,...env,FLOWCRAFT_MCP_API_ORIGIN:'http://127.0.0.1:'+address.port,FLOWCRAFT_MCP_ENABLE_RUNS:'0'}
+  });
+  let stdout='',stderr='';
+  child.stdout.on('data',data=>{stdout+=data.toString();});
+  child.stderr.on('data',data=>{stderr+=data.toString();});
+  const requests=[
+   rpc('server/discover',{},41),
+   rpc('tools/list',{},42),
+   rpc('tools/call',{name:'list_workflows',arguments:{}},43)
+  ];
+  child.stdin.end(requests.map(value=>JSON.stringify(value)).join('\n')+'\n');
+  const code=await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>{child.kill();reject(Error('MCP_STDIO_TIMEOUT'));},9000);
+   child.once('close',code=>{clearTimeout(timer);resolve(code);});
+   child.once('error',error=>{clearTimeout(timer);reject(error);});
+  });
+  assert.equal(code,0,stderr.slice(0,200));
+  const replies=stdout.trim().split('\n').map(line=>JSON.parse(line));
+  assert.deepEqual(replies.map(reply=>reply.id),[41,42,43]);
+  assert.equal(replies[0].result.resultType,'complete');
+  assert.ok(replies[1].result.tools.some(tool=>tool.name==='list_workflows'));
+  assert.ok(!replies[1].result.tools.some(tool=>tool.name==='run_workflow'));
+  assert.equal(replies[2].result.isError,false);
+  const result=JSON.parse(replies[2].result.content[0].text);
+  assert.equal(result.workflows[0].workflowId,W);
+  assert.equal(result.workflows[0].definitionHash,H);
+  assert.ok(!JSON.stringify(replies).includes('CANARY_PRIVATE'));
+  assert.deepEqual(observed,[{method:'GET',path:'/api/workflows',cookie:'token='+env.FLOWCRAFT_MCP_SESSION_TOKEN}]);
+ }finally{
+  if(child&&child.exitCode===null)child.kill();
+  await new Promise(resolve=>fixture.close(resolve));
+ }
 });
