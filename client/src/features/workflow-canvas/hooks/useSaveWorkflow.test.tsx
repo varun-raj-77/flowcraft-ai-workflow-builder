@@ -95,4 +95,33 @@ describe('useSaveWorkflow', () => {
 
     expect(clearTimeoutSpy).toHaveBeenCalled();
   });
+
+  it('does not replace a different workflow loaded while a save was pending', async () => {
+    let finish!: (workflow: Workflow) => void;
+    mocks.updateWorkflow.mockReturnValueOnce(new Promise<Workflow>((resolve) => { finish = resolve; }));
+    const { result } = renderHook(() => useSaveWorkflow());
+    await act(async () => {
+      const save = result.current.save();
+      useWorkflowStore.getState().setWorkflow({ ...savedWorkflow, _id: 'workflow-2', name: 'Different page' });
+      finish({ ...savedWorkflow, currentRevision: 2 });
+      await expect(save).resolves.toBe(false);
+    });
+    expect(useWorkflowStore.getState().meta).toMatchObject({ _id: 'workflow-2', name: 'Different page' });
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it('discards an old acknowledgement after a clean reload of the same workflow', async () => {
+    useWorkflowStore.getState().setWorkflow(savedWorkflow);
+    let finish!: (workflow: Workflow) => void;
+    mocks.updateWorkflow.mockReturnValueOnce(new Promise<Workflow>((resolve) => { finish = resolve; }));
+    const { result } = renderHook(() => useSaveWorkflow());
+    await act(async () => {
+      const save = result.current.save();
+      useWorkflowStore.getState().setWorkflow({ ...savedWorkflow, currentRevision: 3 });
+      finish({ ...savedWorkflow, currentRevision: 2 });
+      await expect(save).resolves.toBe(false);
+    });
+    expect(useWorkflowStore.getState().meta?.currentRevision).toBe(3);
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+  });
 });

@@ -76,8 +76,15 @@ export function useRunWorkflow() {
       let workflowId = meta?._id;
 
       if (!workflowId || isDirty) {
-        await save();
-        workflowId = useWorkflowStore.getState().meta?._id;
+        const pathname = window.location.pathname;
+        if (!await save()) return;
+        const current = useWorkflowStore.getState();
+        if (workflowId && (window.location.pathname !== pathname || current.meta?._id !== workflowId)) return;
+        if (current.isDirty) {
+          setLastError('The workflow changed while saving. Save the latest edits before running.');
+          return;
+        }
+        workflowId = current.meta?._id;
       }
 
       if (!workflowId) {

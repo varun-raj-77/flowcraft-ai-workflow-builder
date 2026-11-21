@@ -121,7 +121,34 @@ function takeSnapshot(state: Pick<WorkflowState, 'nodes' | 'edges' | 'meta'>): W
 }
 
 function snapshotsEqual(a: WorkflowSnapshot, b: WorkflowSnapshot): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  // Canvas-only selection and measurements are not saved workflow edits.
+  const definition = (snapshot: WorkflowSnapshot) => ({
+    nodes: snapshot.nodes.map(fromFlowNode),
+    edges: snapshot.edges.map(fromFlowEdge),
+    meta: snapshot.meta,
+  });
+  return JSON.stringify(definition(a)) === JSON.stringify(definition(b));
+}
+
+function workflowSnapshot(workflow: Workflow): WorkflowSnapshot {
+  return {
+    nodes: workflow.nodes.map(toFlowNode),
+    edges: workflow.edges.map(toFlowEdge),
+    meta: {
+      _id: workflow._id,
+      name: workflow.name,
+      description: workflow.description,
+      isGeneratedByAI: workflow.isGeneratedByAI,
+      generationMetadata: workflow.generationMetadata,
+      currentRevision: workflow.currentRevision,
+      currentRevisionId: workflow.currentRevisionId,
+      definitionHash: workflow.definitionHash,
+    },
+  };
+}
+
+function loadedState(snapshot: WorkflowSnapshot) {
+  return { ...snapshot, isDirty: false, undoStack: [], redoStack: [], savedSnapshot: cloneSnapshot(snapshot), dragSnapshot: null };
 }
 
 function emptySnapshot(): WorkflowSnapshot {
@@ -146,6 +173,7 @@ interface WorkflowState {
 
   // Domain actions
   setWorkflow: (workflow: Workflow) => void;
+  acknowledgeWorkflowUpdate: (workflow: Workflow, submitted: Pick<WorkflowState, 'nodes' | 'edges' | 'meta' | 'savedSnapshot' | 'undoStack' | 'redoStack' | 'dragSnapshot'>) => boolean;
   clearWorkflow: () => void;
   addNode: (type: NodeType, position: { x: number; y: number }) => string;
   removeNode: (nodeId: string) => void;
@@ -247,24 +275,45 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   // ── Domain actions ──────────────────────────────────────────
 
-  setWorkflow: (workflow) =>
-    set(() => {
-      const next: WorkflowSnapshot = {
-        nodes: workflow.nodes.map(toFlowNode),
-        edges: workflow.edges.map(toFlowEdge),
-        meta: {
-        _id: workflow._id,
-        name: workflow.name,
-        description: workflow.description,
-        isGeneratedByAI: workflow.isGeneratedByAI,
-        generationMetadata: workflow.generationMetadata,
+  setWorkflow: (workflow) => set(loadedState(workflowSnapshot(workflow))),
+
+  acknowledgeWorkflowUpdate: (workflow, submitted) => {
+    const state = get();
+    // Another load, save, or replacement owns the editor now.
+    if (state.savedSnapshot !== submitted.savedSnapshot ||
+        state.meta?._id !== workflow._id || submitted.meta?._id !== workflow._id) return false;
+
+    const acknowledged = workflowSnapshot(workflow);
+    const editedWhileSaving = !snapshotsEqual(state, submitted) ||
+      state.undoStack !== submitted.undoStack || state.redoStack !== submitted.redoStack ||
+      state.dragSnapshot !== submitted.dragSnapshot;
+    if (!editedWhileSaving) {
+      set(loadedState(acknowledged));
+      return true;
+    }
+
+    // Undo/redo must restore draft content, never an obsolete revision pointer.
+    const rebase = (snapshot: WorkflowSnapshot): WorkflowSnapshot => ({
+      nodes: snapshot.nodes,
+      edges: snapshot.edges,
+      meta: snapshot.meta && {
+        ...snapshot.meta,
         currentRevision: workflow.currentRevision,
         currentRevisionId: workflow.currentRevisionId,
         definitionHash: workflow.definitionHash,
-        },
-      };
-      return { ...next, isDirty: false, undoStack: [], redoStack: [], savedSnapshot: cloneSnapshot(next), dragSnapshot: null };
-    }),
+      },
+    });
+    const draft = rebase(state);
+    set({
+      ...draft,
+      savedSnapshot: cloneSnapshot(acknowledged),
+      isDirty: !snapshotsEqual(draft, acknowledged),
+      undoStack: state.undoStack.map(rebase),
+      redoStack: state.redoStack.map(rebase),
+      dragSnapshot: state.dragSnapshot && rebase(state.dragSnapshot),
+    });
+    return true;
+  },
 
   clearWorkflow: () =>
     set(() => ({ ...emptySnapshot(), isDirty: false, undoStack: [], redoStack: [], savedSnapshot: emptySnapshot(), dragSnapshot: null })),
