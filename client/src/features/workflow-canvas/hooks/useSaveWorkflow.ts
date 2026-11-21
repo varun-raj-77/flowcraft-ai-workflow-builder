@@ -10,10 +10,6 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export function useSaveWorkflow() {
   const router = useRouter();
-  const meta = useWorkflowStore((s) => s.meta);
-  const toWorkflowNodes = useWorkflowStore((s) => s.toWorkflowNodes);
-  const toWorkflowEdges = useWorkflowStore((s) => s.toWorkflowEdges);
-  const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
 
   const [status, setStatus] = useState<SaveStatus>('idle');
   const isSavingRef = useRef(false);
@@ -44,8 +40,8 @@ export function useSaveWorkflow() {
     };
   }, [clearStatusTimer]);
 
-  const save = useCallback(async (): Promise<void> => {
-    if (isSavingRef.current) return;
+  const save = useCallback(async (): Promise<boolean> => {
+    if (isSavingRef.current) return false;
     if (useRevisionHistoryStore.getState().previewRevision || useRevisionComparisonStore.getState().comparison) {
       throw new api.ApiError(
         409,
@@ -59,8 +55,11 @@ export function useSaveWorkflow() {
     setStatus('saving');
 
     try {
-      const nodes = toWorkflowNodes();
-      const edges = toWorkflowEdges();
+      const submitted = useWorkflowStore.getState();
+      const { meta } = submitted;
+      const pathname = window.location.pathname;
+      const nodes = submitted.toWorkflowNodes();
+      const edges = submitted.toWorkflowEdges();
 
       if (meta?._id) {
         if (!meta.currentRevision) {
@@ -73,7 +72,11 @@ export function useSaveWorkflow() {
           nodes,
           edges,
         }, meta.generationMetadata));
-        setWorkflow(saved);
+        if (!isMountedRef.current) return false;
+        if (window.location.pathname !== pathname || !submitted.acknowledgeWorkflowUpdate(saved, submitted)) {
+          setStatus('idle');
+          return false;
+        }
       } else {
         const created = await api.createWorkflow(withNormalizedGenerationMetadata({
           name: meta?.name || 'Untitled Workflow',
@@ -82,12 +85,13 @@ export function useSaveWorkflow() {
           edges,
           isGeneratedByAI: meta?.isGeneratedByAI,
         }, meta?.generationMetadata));
-        setWorkflow(created);
+        submitted.setWorkflow(created);
         router.replace(`/editor/${created._id}`);
       }
 
-      if (isMountedRef.current) setStatus('saved');
+      if (isMountedRef.current) setStatus(useWorkflowStore.getState().isDirty ? 'idle' : 'saved');
       resetStatusAfter(2000);
+      return true;
     } catch (err) {
       if (isMountedRef.current) setStatus('error');
       resetStatusAfter(3000);
@@ -95,7 +99,7 @@ export function useSaveWorkflow() {
     } finally {
       isSavingRef.current = false;
     }
-  }, [clearStatusTimer, meta, resetStatusAfter, toWorkflowNodes, toWorkflowEdges, setWorkflow, router]);
+  }, [clearStatusTimer, resetStatusAfter, router]);
 
   return { save, status };
 }

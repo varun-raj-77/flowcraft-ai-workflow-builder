@@ -86,6 +86,36 @@ describe('useRunWorkflow socket setup', () => {
     expect(useExecutionStore.getState().isRunning).toBe(true);
   });
 
+  it('does not run an older saved revision if a newer draft remains unsaved', async () => {
+    useWorkflowStore.setState({ isDirty: true });
+    mocks.save.mockResolvedValue(true);
+    const { result } = renderHook(() => useRunWorkflow());
+    await act(async () => { await result.current.run(); });
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+    expect(mocks.prepareSocket).not.toHaveBeenCalled();
+    expect(mocks.runWorkflow).not.toHaveBeenCalled();
+    expect(useExecutionStore.getState().lastError).toMatch(/changed while saving/i);
+  });
+
+  it('does not run when autosave acknowledgement belongs to an earlier editor instance', async () => {
+    useWorkflowStore.setState({ isDirty: true });
+    let acknowledge!: (applied: boolean) => void;
+    mocks.save.mockReturnValue(new Promise<boolean>((resolve) => { acknowledge = resolve; }));
+    const { result } = renderHook(() => useRunWorkflow());
+    await act(async () => {
+      const run = result.current.run();
+      useWorkflowStore.setState({
+        meta: { _id: 'workflow_1', name: 'Reloaded workflow', isGeneratedByAI: false },
+        isDirty: false,
+      });
+      acknowledge(false);
+      await run;
+    });
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+    expect(mocks.prepareSocket).not.toHaveBeenCalled();
+    expect(mocks.runWorkflow).not.toHaveBeenCalled();
+  });
+
   it('cleans up execution polling when the editor unmounts', async () => {
     const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
     const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
