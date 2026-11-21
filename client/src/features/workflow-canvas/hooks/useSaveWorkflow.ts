@@ -50,14 +50,21 @@ export function useSaveWorkflow() {
       );
     }
 
+    const submitted = useWorkflowStore.getState();
+    const { meta } = submitted;
+    const pathname = window.location.pathname;
+    if (meta?._id && pathname === '/editor/new' && submitted.createdWorkflowHandoff === meta._id) {
+      // Don't bind a PUT to the temporary URL while the canonical route is
+      // taking over. Retry the route on Save if the transition didn't finish.
+      router.replace(`/editor/${meta._id}`);
+      return false;
+    }
+
     isSavingRef.current = true;
     clearStatusTimer();
     setStatus('saving');
 
     try {
-      const submitted = useWorkflowStore.getState();
-      const { meta } = submitted;
-      const pathname = window.location.pathname;
       const nodes = submitted.toWorkflowNodes();
       const edges = submitted.toWorkflowEdges();
 
@@ -73,7 +80,7 @@ export function useSaveWorkflow() {
           edges,
         }, meta.generationMetadata));
         if (!isMountedRef.current) return false;
-        if (window.location.pathname !== pathname || !submitted.acknowledgeWorkflowUpdate(saved, submitted)) {
+        if (window.location.pathname !== pathname || !submitted.acknowledgeWorkflowSave(saved, submitted, 'update')) {
           setStatus('idle');
           return false;
         }
@@ -85,7 +92,11 @@ export function useSaveWorkflow() {
           edges,
           isGeneratedByAI: meta?.isGeneratedByAI,
         }, meta?.generationMetadata));
-        submitted.setWorkflow(created);
+        if (!isMountedRef.current) return false;
+        if (window.location.pathname !== pathname || !submitted.acknowledgeWorkflowSave(created, submitted, 'create')) {
+          setStatus('idle');
+          return false;
+        }
         router.replace(`/editor/${created._id}`);
       }
 

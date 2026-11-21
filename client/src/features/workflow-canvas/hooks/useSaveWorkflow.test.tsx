@@ -37,6 +37,7 @@ beforeEach(() => {
   mocks.replace.mockReset();
   mocks.updateWorkflow.mockReset().mockResolvedValue(savedWorkflow);
   mocks.createWorkflow.mockReset().mockResolvedValue(savedWorkflow);
+  useWorkflowStore.getState().clearWorkflow();
   useWorkflowStore.setState({
     nodes: [],
     edges: [],
@@ -123,5 +124,51 @@ describe('useSaveWorkflow', () => {
     });
     expect(useWorkflowStore.getState().meta?.currentRevision).toBe(3);
     expect(useWorkflowStore.getState().isDirty).toBe(false);
+  });
+
+  it('does not adopt or navigate to a creation acknowledged after the draft was replaced', async () => {
+    const store = useWorkflowStore.getState();
+    store.clearWorkflow();
+    store.addNode('delay', { x: 0, y: 0 });
+    let finish!: (workflow: Workflow) => void;
+    mocks.createWorkflow.mockReturnValueOnce(new Promise<Workflow>((resolve) => { finish = resolve; }));
+    const { result } = renderHook(() => useSaveWorkflow());
+    await act(async () => {
+      const save = result.current.save();
+      store.clearWorkflow();
+      store.addNode('transform', { x: 0, y: 0 });
+      finish(savedWorkflow);
+      await expect(save).resolves.toBe(false);
+    });
+    expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(useWorkflowStore.getState().meta).toBeNull();
+    expect(useWorkflowStore.getState().nodes.map((node) => node.type)).toEqual(['transform']);
+    expect(useWorkflowStore.getState().createdWorkflowHandoff).toBeNull();
+  });
+
+  it('does not start a second save on the temporary URL before canonical navigation', async () => {
+    const originalLocation = window.location.href;
+    try {
+      window.history.replaceState(null, '', '/editor/new');
+      const store = useWorkflowStore.getState();
+      store.clearWorkflow();
+      store.addNode('delay', { x: 0, y: 0 });
+      const { result } = renderHook(() => useSaveWorkflow());
+      await act(async () => { await expect(result.current.save()).resolves.toBe(true); });
+      act(() => { store.addNode('transform', { x: 0, y: 0 }); });
+
+      await act(async () => { await expect(result.current.save()).resolves.toBe(false); });
+      expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
+      expect(mocks.updateWorkflow).not.toHaveBeenCalled();
+      expect(mocks.replace.mock.calls).toEqual([['/editor/workflow-1'], ['/editor/workflow-1']]);
+
+      window.history.replaceState(null, '', '/editor/workflow-1');
+      act(() => { expect(store.consumeCreatedWorkflowHandoff('workflow-1')).toBe(true); });
+      await act(async () => { await expect(result.current.save()).resolves.toBe(true); });
+      expect(mocks.updateWorkflow).toHaveBeenCalledWith('workflow-1', expect.objectContaining({ expectedRevision: 1 }));
+    } finally {
+      window.history.replaceState(null, '', originalLocation);
+    }
   });
 });
