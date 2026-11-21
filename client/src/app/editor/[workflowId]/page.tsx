@@ -11,6 +11,7 @@ import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 import { NodePalette } from '@/features/workflow-canvas/NodePalette';
 import { CanvasToolbar } from '@/features/workflow-canvas/CanvasToolbar';
 import { WorkflowCanvas } from '@/features/workflow-canvas/WorkflowCanvas';
+import { useWarnOnPageExit } from '@/features/workflow-canvas/hooks/useWarnOnPageExit';
 import { ConfigPanel } from '@/features/node-config/ConfigPanel';
 import { ExecutionPanel } from '@/features/execution-viewer/ExecutionPanel';
 import { TestLabPanel } from '@/features/test-lab/TestLabPanel';
@@ -26,6 +27,7 @@ import * as api from '@/lib/api';
 type LoadState = 'loading' | 'ready' | 'error';
 
 export default function EditorPage() {
+  useWarnOnPageExit();
   const params = useParams<{ workflowId: string }>();
   const setWorkflow = useWorkflowStore((s) => s.setWorkflow);
   const clearWorkflow = useWorkflowStore((s) => s.clearWorkflow);
