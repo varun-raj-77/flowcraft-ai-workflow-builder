@@ -130,7 +130,7 @@ function snapshotsEqual(a: WorkflowSnapshot, b: WorkflowSnapshot): boolean {
   return JSON.stringify(definition(a)) === JSON.stringify(definition(b));
 }
 
-function workflowSnapshot(workflow: Workflow): WorkflowSnapshot {
+function workflowSnapshot(workflow: Workflow): WorkflowSnapshot & { meta: WorkflowMeta } {
   return {
     nodes: workflow.nodes.map(toFlowNode),
     edges: workflow.edges.map(toFlowEdge),
@@ -148,7 +148,7 @@ function workflowSnapshot(workflow: Workflow): WorkflowSnapshot {
 }
 
 function loadedState(snapshot: WorkflowSnapshot) {
-  return { ...snapshot, isDirty: false, undoStack: [], redoStack: [], savedSnapshot: cloneSnapshot(snapshot), dragSnapshot: null };
+  return { ...snapshot, isDirty: false, undoStack: [], redoStack: [], savedSnapshot: cloneSnapshot(snapshot), dragSnapshot: null, createdWorkflowHandoff: null };
 }
 
 function emptySnapshot(): WorkflowSnapshot {
@@ -165,6 +165,7 @@ interface WorkflowState {
   redoStack: WorkflowSnapshot[];
   savedSnapshot: WorkflowSnapshot;
   dragSnapshot: WorkflowSnapshot | null;
+  createdWorkflowHandoff: string | null;
 
   // React Flow change handlers — passed directly as props
   onNodesChange: OnNodesChange<Node<FlowNodeData>>;
@@ -173,7 +174,8 @@ interface WorkflowState {
 
   // Domain actions
   setWorkflow: (workflow: Workflow) => void;
-  acknowledgeWorkflowUpdate: (workflow: Workflow, submitted: Pick<WorkflowState, 'nodes' | 'edges' | 'meta' | 'savedSnapshot' | 'undoStack' | 'redoStack' | 'dragSnapshot'>) => boolean;
+  acknowledgeWorkflowSave: (workflow: Workflow, submitted: WorkflowSaveSnapshot, kind: 'create' | 'update') => boolean;
+  consumeCreatedWorkflowHandoff: (workflowId: string) => boolean;
   clearWorkflow: () => void;
   addNode: (type: NodeType, position: { x: number; y: number }) => string;
   removeNode: (nodeId: string) => void;
@@ -191,6 +193,8 @@ interface WorkflowState {
   toWorkflowNodes: () => WorkflowNode[];
   toWorkflowEdges: () => WorkflowEdge[];
 }
+
+type WorkflowSaveSnapshot = Pick<WorkflowState, 'nodes' | 'edges' | 'meta' | 'savedSnapshot' | 'undoStack' | 'redoStack' | 'dragSnapshot'>;
 
 function commitSnapshot(
   state: WorkflowState,
@@ -215,6 +219,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   redoStack: [],
   savedSnapshot: emptySnapshot(),
   dragSnapshot: null,
+  createdWorkflowHandoff: null,
 
   // ── React Flow change handlers ──────────────────────────────
   // These are called by React Flow on every interaction (drag, select, delete).
@@ -277,18 +282,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setWorkflow: (workflow) => set(loadedState(workflowSnapshot(workflow))),
 
-  acknowledgeWorkflowUpdate: (workflow, submitted) => {
+  acknowledgeWorkflowSave: (workflow, submitted, kind) => {
     const state = get();
     // Another load, save, or replacement owns the editor now.
-    if (state.savedSnapshot !== submitted.savedSnapshot ||
-        state.meta?._id !== workflow._id || submitted.meta?._id !== workflow._id) return false;
+    if (state.savedSnapshot !== submitted.savedSnapshot) return false;
+    const creating = kind === 'create';
+    if (creating && (state.meta?._id || submitted.meta?._id)) return false;
+    if (!creating && (state.meta?._id !== workflow._id || submitted.meta?._id !== workflow._id)) return false;
 
     const acknowledged = workflowSnapshot(workflow);
+    const createdWorkflowHandoff = creating ? workflow._id : state.createdWorkflowHandoff;
     const editedWhileSaving = !snapshotsEqual(state, submitted) ||
       state.undoStack !== submitted.undoStack || state.redoStack !== submitted.redoStack ||
       state.dragSnapshot !== submitted.dragSnapshot;
     if (!editedWhileSaving) {
-      set(loadedState(acknowledged));
+      set({ ...loadedState(acknowledged), createdWorkflowHandoff });
       return true;
     }
 
@@ -296,8 +304,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const rebase = (snapshot: WorkflowSnapshot): WorkflowSnapshot => ({
       nodes: snapshot.nodes,
       edges: snapshot.edges,
-      meta: snapshot.meta && {
-        ...snapshot.meta,
+      meta: {
+        ...(snapshot.meta ?? acknowledged.meta),
+        _id: workflow._id,
         currentRevision: workflow.currentRevision,
         currentRevisionId: workflow.currentRevisionId,
         definitionHash: workflow.definitionHash,
@@ -311,12 +320,19 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       undoStack: state.undoStack.map(rebase),
       redoStack: state.redoStack.map(rebase),
       dragSnapshot: state.dragSnapshot && rebase(state.dragSnapshot),
+      createdWorkflowHandoff,
     });
     return true;
   },
 
-  clearWorkflow: () =>
-    set(() => ({ ...emptySnapshot(), isDirty: false, undoStack: [], redoStack: [], savedSnapshot: emptySnapshot(), dragSnapshot: null })),
+  consumeCreatedWorkflowHandoff: (workflowId) => {
+    const { createdWorkflowHandoff, meta } = get();
+    if (!createdWorkflowHandoff) return false;
+    set({ createdWorkflowHandoff: null });
+    return createdWorkflowHandoff === workflowId && meta?._id === workflowId;
+  },
+
+  clearWorkflow: () => set(loadedState(emptySnapshot())),
 
   addNode: (type, position) => {
     const id = generateId('node');
@@ -411,7 +427,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           edges: workflow.edges.map(toFlowEdge),
           meta: { _id: '', name: workflow.name, description: workflow.description, isGeneratedByAI: true, generationMetadata: workflow.generationMetadata },
         };
-        return { ...draft, isDirty: true, undoStack: [], redoStack: [], savedSnapshot: emptySnapshot(), dragSnapshot: null };
+        return { ...draft, isDirty: true, undoStack: [], redoStack: [], savedSnapshot: emptySnapshot(), dragSnapshot: null, createdWorkflowHandoff: null };
       }
       return commitSnapshot(state, {
         nodes: workflow.nodes.map(toFlowNode),

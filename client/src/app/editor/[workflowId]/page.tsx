@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useWorkflowStore } from '@/stores/workflowStore';
@@ -38,9 +38,22 @@ export default function EditorPage() {
   const resetRevisionComparison = useRevisionComparisonStore((s) => s.reset);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [loadError, setLoadError] = useState('');
+  const acceptedHandoff = useRef<string | null>(null);
 
   useEffect(() => {
     async function loadWorkflow() {
+      const workflowId = params.workflowId;
+      const editorState = useWorkflowStore.getState();
+      // Creation already loaded the saved revision and may have held onto a
+      // newer draft. Only this same-ID promotion skips the ordinary GET.
+      if (editorState.consumeCreatedWorkflowHandoff(workflowId) ||
+          (acceptedHandoff.current === workflowId && editorState.meta?._id === workflowId)) {
+        // Keep effect replays on this mount (including Strict Mode) idempotent.
+        acceptedHandoff.current = workflowId;
+        setLoadState('ready');
+        return;
+      }
+      acceptedHandoff.current = null;
       resetRevisionHistory();
       resetRevisionComparison();
       useUIStore.getState().selectNode(null);
