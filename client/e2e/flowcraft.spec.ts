@@ -165,7 +165,8 @@ test.describe('FlowCraft critical journeys', () => {
       await expect(staleResponse.json()).resolves.toMatchObject({
         error: { code: 'WORKFLOW_REVISION_CONFLICT' },
       });
-      await expect(pageB.getByText('Save failed', { exact: true })).toBeVisible();
+      await expect(pageB.getByRole('alert').filter({ hasText: 'Save failed' })).toContainText('A newer revision is already saved');
+      await expect(pageB.getByRole('application').getByText('Delay', { exact: true })).toBeVisible();
       expect(workflowState.get('workflow-shared')?.currentRevision).toBe(2);
     } finally {
       await contextA.close();

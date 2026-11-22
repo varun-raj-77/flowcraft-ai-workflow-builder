@@ -103,7 +103,7 @@ export function CanvasToolbar() {
   const errors = findings.filter((finding) => finding.severity === 'error');
   const foundNodes = findWorkflowNodes(nodes, nodeQuery);
 
-  const { save, status } = useSaveWorkflow();
+  const { save, status, saveError } = useSaveWorkflow();
   // Run's auto-save and manual Save share the same in-flight save guard.
   const { run, isRunning, isStarting } = useRunWorkflow(save);
 
@@ -159,6 +159,7 @@ export function CanvasToolbar() {
   };
 
   return (
+    <>
     <header className="relative flex min-h-14 min-w-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-shell)] px-3 sm:px-4">
       {/* Left: Editable workflow name + status */}
       <div className="flex min-w-0 shrink items-center gap-2.5">
@@ -174,10 +175,6 @@ export function CanvasToolbar() {
         )}
         {status === 'saved' && (
           <span className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Saved
-          </span>
-        )}
-        {status === 'error' && (
-          <span className="flex items-center gap-1.5 text-[10px] font-medium text-red-300"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />Save failed
           </span>
         )}
       </div>
@@ -252,5 +249,11 @@ export function CanvasToolbar() {
       )}
       {showPreflight && <div id="workflow-preflight-panel" role="region" aria-label="Workflow preflight results" className="fc-panel-raised absolute right-3 top-full z-30 mt-1 max-h-[min(24rem,calc(100vh-8rem))] w-80 max-w-[calc(100vw-1.5rem)] overflow-y-auto p-3 shadow-2xl"><p className="text-xs font-semibold text-[var(--text-primary)]">Workflow preflight</p>{findings.length === 0 ? <p className="mt-2 text-xs text-emerald-300">Ready to run.</p> : <ul className="mt-2 space-y-2">{findings.map((finding) => <li key={finding.id} className="flex gap-2 text-xs text-[var(--text-secondary)]"><span className={finding.severity === 'error' ? 'text-red-300' : 'text-amber-300'}>{finding.severity === 'error' ? 'Error' : 'Warning'}</span><span className="flex-1">{finding.message}</span>{finding.nodeId && <button type="button" onClick={() => focusNode(finding.nodeId!)} className="fc-focus rounded text-violet-300 hover:underline">Focus</button>}</li>)}</ul>}</div>}
     </header>
+    {saveError && (
+      <p role="alert" className="shrink-0 border-b border-red-500/30 bg-red-950/30 px-4 py-2 text-xs text-red-200">
+        <strong>Save failed.</strong> {saveError}
+      </p>
+    )}
+    </>
   );
 }

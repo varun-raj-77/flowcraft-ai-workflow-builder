@@ -8,10 +8,28 @@ import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
+function describeSaveError(error: unknown, isNew: boolean): string {
+  if (error instanceof api.ApiError) {
+    if (error.code === 'WORKFLOW_REVISION_CONFLICT') {
+      return 'A newer revision is already saved. Your edits are still in this tab. Review the latest version in another tab before reapplying your changes.';
+    }
+    if (error.status === 401) {
+      return 'Your session expired. Your edits are still here. Sign in from another tab, then return and save again.';
+    }
+  }
+
+  if (isNew && (!(error instanceof api.ApiError) || error.status >= 500 || error.code === 'INVALID_RESPONSE')) {
+    return 'The server did not confirm the first save. Your draft is still here. Check the dashboard in another tab before trying again.';
+  }
+
+  return `${api.getApiErrorMessage(error, 'The save did not complete.')} Your edits are still here.`;
+}
+
 export function useSaveWorkflow() {
   const router = useRouter();
 
   const [status, setStatus] = useState<SaveStatus>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const isSavingRef = useRef(false);
   const isMountedRef = useRef(true);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,6 +80,7 @@ export function useSaveWorkflow() {
 
     isSavingRef.current = true;
     clearStatusTimer();
+    setSaveError(null);
     setStatus('saving');
 
     try {
@@ -104,13 +123,17 @@ export function useSaveWorkflow() {
       resetStatusAfter(2000);
       return true;
     } catch (err) {
-      if (isMountedRef.current) setStatus('error');
-      resetStatusAfter(3000);
+      if (isMountedRef.current) {
+        const belongsToEditor = window.location.pathname === pathname
+          && useWorkflowStore.getState().savedSnapshot === submitted.savedSnapshot;
+        if (belongsToEditor) setSaveError(describeSaveError(err, !meta?._id));
+        setStatus(belongsToEditor ? 'error' : 'idle');
+      }
       throw err;
     } finally {
       isSavingRef.current = false;
     }
   }, [clearStatusTimer, resetStatusAfter, router]);
 
-  return { save, status };
+  return { save, status, saveError };
 }
