@@ -101,8 +101,8 @@ export async function listWorkflows(): Promise<WorkflowSummary[]> {
 }
 
 /** Get a single workflow with full graph data. */
-export async function getWorkflow(id: string): Promise<Workflow> {
-  return request<Workflow>(`/workflows/${id}`);
+export async function getWorkflow(id: string, signal?: AbortSignal): Promise<Workflow> {
+  return request<Workflow>(`/workflows/${id}`, { signal });
 }
 
 /** Create a new workflow. Returns the created document. */
