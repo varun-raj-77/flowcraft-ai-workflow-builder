@@ -104,7 +104,8 @@ export function CanvasToolbar() {
   const foundNodes = findWorkflowNodes(nodes, nodeQuery);
 
   const { save, status } = useSaveWorkflow();
-  const { run, isRunning } = useRunWorkflow();
+  // Run's auto-save and manual Save share the same in-flight save guard.
+  const { run, isRunning, isStarting } = useRunWorkflow(save);
 
   useEffect(() => {
     if (isReadOnly) {
@@ -213,8 +214,8 @@ export function CanvasToolbar() {
           variant="primary"
           size="sm"
           onClick={() => { void run(); }}
-          isLoading={isRunning}
-          disabled={isReadOnly || (!meta?._id && !isDirty)}
+          isLoading={isStarting || isRunning}
+          disabled={isReadOnly || status === 'saving' || (!meta?._id && !isDirty)}
         >
           Run
         </Button>

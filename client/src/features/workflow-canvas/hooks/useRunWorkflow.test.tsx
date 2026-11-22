@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   runWorkflow: vi.fn(),
 }));
 
-vi.mock('./useSaveWorkflow', () => ({ useSaveWorkflow: () => ({ save: mocks.save }) }));
 vi.mock('@/features/execution-viewer/hooks/useExecutionSocket', () => ({
   useExecutionSocket: () => ({ joinRun: mocks.joinRun, prepareSocket: mocks.prepareSocket }),
 }));
@@ -62,7 +61,7 @@ afterEach(() => {
 describe('useRunWorkflow socket setup', () => {
   it('does not create or display a pending run when live socket setup fails', async () => {
     mocks.prepareSocket.mockImplementation(() => { throw new Error('Socket.IO is not configured. Set NEXT_PUBLIC_SOCKET_URL or NEXT_PUBLIC_API_URL to a public HTTPS backend origin, then redeploy.'); });
-    const { result } = renderHook(() => useRunWorkflow());
+    const { result } = renderHook(() => useRunWorkflow(mocks.save));
 
     await act(async () => { await result.current.run(); });
 
@@ -75,7 +74,7 @@ describe('useRunWorkflow socket setup', () => {
   it('preserves the existing execution flow after successful socket setup', async () => {
     mocks.prepareSocket.mockReturnValue({});
     mocks.runWorkflow.mockResolvedValue(runningRun);
-    const { result } = renderHook(() => useRunWorkflow());
+    const { result } = renderHook(() => useRunWorkflow(mocks.save));
 
     await act(async () => { await result.current.run(); });
 
@@ -89,7 +88,7 @@ describe('useRunWorkflow socket setup', () => {
   it('does not run an older saved revision if a newer draft remains unsaved', async () => {
     useWorkflowStore.setState({ isDirty: true });
     mocks.save.mockResolvedValue(true);
-    const { result } = renderHook(() => useRunWorkflow());
+    const { result } = renderHook(() => useRunWorkflow(mocks.save));
     await act(async () => { await result.current.run(); });
     expect(mocks.save).toHaveBeenCalledTimes(1);
     expect(mocks.prepareSocket).not.toHaveBeenCalled();
@@ -101,7 +100,7 @@ describe('useRunWorkflow socket setup', () => {
     useWorkflowStore.setState({ isDirty: true });
     let acknowledge!: (applied: boolean) => void;
     mocks.save.mockReturnValue(new Promise<boolean>((resolve) => { acknowledge = resolve; }));
-    const { result } = renderHook(() => useRunWorkflow());
+    const { result } = renderHook(() => useRunWorkflow(mocks.save));
     await act(async () => {
       const run = result.current.run();
       useWorkflowStore.setState({
@@ -121,12 +120,72 @@ describe('useRunWorkflow socket setup', () => {
     const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
     mocks.prepareSocket.mockReturnValue({});
     mocks.runWorkflow.mockResolvedValue(runningRun);
-    const { result, unmount } = renderHook(() => useRunWorkflow());
+    const { result, unmount } = renderHook(() => useRunWorkflow(mocks.save));
 
     await act(async () => { await result.current.run(); });
     unmount();
 
     expect(clearIntervalSpy).toHaveBeenCalled();
     expect(clearTimeoutSpy).toHaveBeenCalled();
+  });
+});
+
+
+describe('useRunWorkflow dispatch guard', () => {
+  it('sends one start request even when Run is invoked twice before the first response', async () => {
+    mocks.prepareSocket.mockReturnValue({});
+    let complete!: (run: ExecutionRun) => void;
+    mocks.runWorkflow.mockReturnValue(new Promise<ExecutionRun>((resolve) => { complete = resolve; }));
+    const { result } = renderHook(() => useRunWorkflow(mocks.save));
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+
+    act(() => {
+      first = result.current.run();
+      second = result.current.run();
+    });
+    await second;
+    expect(result.current.isStarting).toBe(true);
+    expect(mocks.runWorkflow).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      complete(runningRun);
+      await first;
+      await result.current.run();
+    });
+    expect(result.current.isStarting).toBe(false);
+    expect(result.current.isRunning).toBe(true);
+    expect(mocks.runWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it('also guards the auto-save gap and unlocks Run if auto-save does not finish', async () => {
+    useWorkflowStore.setState({ isDirty: true });
+    let acknowledge!: (applied: boolean) => void;
+    mocks.save.mockReturnValueOnce(new Promise<boolean>((resolve) => { acknowledge = resolve; }));
+    const { result } = renderHook(() => useRunWorkflow(mocks.save));
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+
+    act(() => {
+      first = result.current.run();
+      second = result.current.run();
+    });
+    await second;
+    expect(result.current.isStarting).toBe(true);
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+    expect(mocks.runWorkflow).not.toHaveBeenCalled();
+
+    await act(async () => { acknowledge(false); await first; });
+    expect(result.current.isStarting).toBe(false);
+
+    mocks.save.mockImplementationOnce(async () => {
+      useWorkflowStore.setState({ isDirty: false });
+      return true;
+    });
+    mocks.runWorkflow.mockResolvedValueOnce(runningRun);
+    await act(async () => { await result.current.run(); });
+    expect(mocks.save).toHaveBeenCalledTimes(2);
+    expect(mocks.runWorkflow).toHaveBeenCalledTimes(1);
+    expect(result.current.isStarting).toBe(false);
   });
 });
