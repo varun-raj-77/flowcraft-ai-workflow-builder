@@ -10,16 +10,16 @@ import { useWorkflowStore } from '@/stores/workflowStore';
 const mocks = vi.hoisted(() => ({
   save: vi.fn(),
   joinRun: vi.fn(),
+  leaveCurrentRoom: vi.fn(),
   prepareSocket: vi.fn(),
   runWorkflow: vi.fn(),
 }));
 
 vi.mock('@/features/execution-viewer/hooks/useExecutionSocket', () => ({
-  useExecutionSocket: () => ({ joinRun: mocks.joinRun, prepareSocket: mocks.prepareSocket }),
+  useExecutionSocket: () => ({ joinRun: mocks.joinRun, leaveCurrentRoom: mocks.leaveCurrentRoom, prepareSocket: mocks.prepareSocket }),
 }));
 vi.mock('@/lib/api', () => ({
   runWorkflow: mocks.runWorkflow,
-  getExecution: vi.fn(),
   getApiErrorMessage: (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback,
 }));
 
@@ -40,6 +40,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   mocks.save.mockReset();
   mocks.joinRun.mockReset();
+  mocks.leaveCurrentRoom.mockReset();
   mocks.prepareSocket.mockReset();
   mocks.runWorkflow.mockReset();
   useWorkflowStore.setState({
@@ -115,18 +116,15 @@ describe('useRunWorkflow socket setup', () => {
     expect(mocks.runWorkflow).not.toHaveBeenCalled();
   });
 
-  it('cleans up execution polling when the editor unmounts', async () => {
-    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
-    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+  it('cleans up the active execution room when the editor unmounts', async () => {
     mocks.prepareSocket.mockReturnValue({});
     mocks.runWorkflow.mockResolvedValue(runningRun);
     const { result, unmount } = renderHook(() => useRunWorkflow(mocks.save));
 
     await act(async () => { await result.current.run(); });
+    expect(mocks.joinRun).toHaveBeenCalledWith('run_1');
     unmount();
-
-    expect(clearIntervalSpy).toHaveBeenCalled();
-    expect(clearTimeoutSpy).toHaveBeenCalled();
+    expect(mocks.leaveCurrentRoom).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -188,4 +186,50 @@ describe('useRunWorkflow dispatch guard', () => {
     expect(mocks.runWorkflow).toHaveBeenCalledTimes(1);
     expect(result.current.isStarting).toBe(false);
   });
+});
+
+
+describe('useRunWorkflow route ownership', () => {
+  it.each(['success', 'failure'] as const)(
+    'a stale %s does not replace the next editor’s pending dispatch',
+    async (outcome) => {
+      mocks.prepareSocket.mockReturnValue({});
+      let completeOld!: (run: ExecutionRun) => void;
+      let rejectOld!: (reason: Error) => void;
+      let completeNew!: (run: ExecutionRun) => void;
+      mocks.runWorkflow
+        .mockReturnValueOnce(new Promise<ExecutionRun>((resolve, reject) => {
+          completeOld = resolve;
+          rejectOld = reject;
+        }))
+        .mockReturnValueOnce(new Promise<ExecutionRun>((resolve) => { completeNew = resolve; }));
+      const { result } = renderHook(() => useRunWorkflow(mocks.save));
+      let oldStart!: Promise<void>;
+      let newStart!: Promise<void>;
+      act(() => {
+        oldStart = result.current.run();
+        useWorkflowStore.setState({ meta: { _id: 'workflow_2', name: 'Other workflow', isGeneratedByAI: false } });
+        useExecutionStore.getState().clearExecution();
+        newStart = result.current.run();
+      });
+
+      await act(async () => {
+        if (outcome === 'success') completeOld(runningRun);
+        else rejectOld(new Error('Old request failed.'));
+        await oldStart;
+      });
+      expect(result.current.isStarting).toBe(true);
+      expect(useExecutionStore.getState().currentRun).toBeNull();
+      expect(useExecutionStore.getState().lastError).toBeNull();
+      expect(mocks.joinRun).not.toHaveBeenCalled();
+
+      await act(async () => {
+        completeNew({ ...runningRun, _id: 'run_2', workflowId: 'workflow_2' });
+        await newStart;
+      });
+      expect(result.current.isStarting).toBe(false);
+      expect(useExecutionStore.getState().currentRun?._id).toBe('run_2');
+      expect(mocks.joinRun.mock.calls).toEqual([['run_2']]);
+    },
+  );
 });

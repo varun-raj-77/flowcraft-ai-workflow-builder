@@ -10,6 +10,7 @@ interface ExecutionState {
   // State
   currentRun: ExecutionRun | null;
   isRunning: boolean;
+  runDispatchToken: symbol | null;
   lastError: string | null;
   historyRuns: ExecutionHistorySummaryRun[];
   historyWorkflowId: string | null;
@@ -27,6 +28,8 @@ interface ExecutionState {
   replayStepIndex: number | null;
 
   // Actions
+  beginRunDispatch: () => symbol | null;
+  finishRunDispatch: (token: symbol) => void;
   setCurrentRun: (run: ExecutionRun) => void;
   updateNodeStatus: (nodeId: string, update: Partial<StepLog>) => void;
   setRunStatus: (status: ExecutionStatus) => void;
@@ -46,9 +49,10 @@ interface ExecutionState {
   clearReplay: () => void;
 }
 
-export const useExecutionStore = create<ExecutionState>((set) => ({
+export const useExecutionStore = create<ExecutionState>((set, get) => ({
   currentRun: null,
   isRunning: false,
+  runDispatchToken: null,
   lastError: null,
   historyRuns: [],
   historyWorkflowId: null,
@@ -64,6 +68,18 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
   activeInspectorTab: 'live',
   replayRunId: null,
   replayStepIndex: null,
+
+  beginRunDispatch: () => {
+    const { isRunning, runDispatchToken } = get();
+    if (isRunning || runDispatchToken) return null;
+    const token = Symbol('run dispatch');
+    set({ runDispatchToken: token });
+    return token;
+  },
+
+  finishRunDispatch: (token) => set((state) =>
+    state.runDispatchToken === token ? { runDispatchToken: null } : state,
+  ),
 
   setCurrentRun: (run) =>
     set({
@@ -94,7 +110,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
     })),
 
   clearExecution: () =>
-    set({ currentRun: null, isRunning: false, lastError: null, selectedStepNodeId: null, replayRunId: null, replayStepIndex: null }),
+    set({ currentRun: null, isRunning: false, runDispatchToken: null, lastError: null, selectedStepNodeId: null, replayRunId: null, replayStepIndex: null }),
 
   setLastError: (lastError) => set({ lastError }),
 
