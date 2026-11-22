@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import * as api from '@/lib/api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -31,11 +32,11 @@ vi.mock('@/features/workflow-manager/WorkflowList', async () => {
     ),
   };
 });
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...await importOriginal<typeof api>(),
   listWorkflows: mocks.listWorkflows,
   deleteWorkflow: mocks.deleteWorkflow,
   createWorkflow: mocks.createWorkflow,
-  getApiErrorMessage: (_error: unknown, fallback: string) => fallback,
 }));
 
 import DashboardPage from './page';
@@ -53,6 +54,7 @@ beforeEach(() => {
   }]);
   mocks.deleteWorkflow.mockReset().mockResolvedValue(undefined);
   mocks.createWorkflow.mockReset();
+  mocks.push.mockReset();
   vi.spyOn(window, 'confirm').mockReturnValue(false);
 });
 
@@ -88,5 +90,56 @@ describe('Dashboard workflow deletion', () => {
 
     await waitFor(() => expect(mocks.deleteWorkflow).toHaveBeenCalledWith('workflow-1'));
     expect(screen.queryByText('Customer sync')).toBeNull();
+  });
+});
+
+
+describe('Dashboard workflow creation', () => {
+  it('does not duplicate a create before routing to the acknowledged workflow', async () => {
+    let complete!: (workflow: { _id: string }) => void;
+    mocks.createWorkflow.mockReturnValue(new Promise((resolve) => { complete = resolve; }));
+    render(<DashboardPage />);
+    const create = screen.getByRole<HTMLButtonElement>('button', { name: /^\+ New Workflow$/ });
+
+    act(() => { create.click(); create.click(); });
+    expect(create.disabled).toBe(true);
+    expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
+
+    await act(async () => { complete({ _id: 'created-1' }); });
+    expect(mocks.push).toHaveBeenCalledWith('/editor/created-1');
+    expect(screen.getByRole('link', { name: 'Open new workflow' }).getAttribute('href')).toBe('/editor/created-1');
+    expect(create.disabled).toBe(true);
+    fireEvent.click(create);
+    expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not pull the user back into the editor after they leave the dashboard', async () => {
+    let complete!: (workflow: { _id: string }) => void;
+    mocks.createWorkflow.mockReturnValue(new Promise((resolve) => { complete = resolve; }));
+    const { unmount } = render(<DashboardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^\+ New Workflow$/ }));
+    unmount();
+    await act(async () => { complete({ _id: 'created-1' }); });
+
+    expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it('re-enables creation after a definitive failure and only retries on user action', async () => {
+    mocks.createWorkflow.mockRejectedValueOnce(new api.ApiError(400, 'WORKFLOW_INVALID', 'Creation failed.'))
+      .mockResolvedValueOnce({ _id: 'created-1' });
+    render(<DashboardPage />);
+    const create = screen.getByRole<HTMLButtonElement>('button', { name: /^\+ New Workflow$/ });
+
+    fireEvent.click(create);
+    expect((await screen.findByRole('alert')).textContent).toContain('Creation failed.');
+    expect(create.disabled).toBe(false);
+    expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    fireEvent.click(create);
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/editor/created-1'));
+    expect(mocks.createWorkflow).toHaveBeenCalledTimes(2);
   });
 });

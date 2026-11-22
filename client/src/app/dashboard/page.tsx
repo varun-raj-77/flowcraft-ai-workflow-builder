@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Button } from '@/components/ui/Button';
@@ -12,12 +12,18 @@ import { useExecutionStore } from '@/stores/executionStore';
 import * as api from '@/lib/api';
 import type { WorkflowSummary } from '@/types';
 
+type PendingCreation = { status: 'creating' } | { status: 'opening'; workflowId: string };
+
 export default function DashboardPage() {
   const router = useRouter();
   const openAIModal = useUIStore((s) => s.openAIModal);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creation, setCreation] = useState<PendingCreation | null>(null);
+  const createPending = useRef(false);
+  const dashboardActive = useRef(false);
 
   // Fetch workflows on mount
   const fetchWorkflows = useCallback(async () => {
@@ -35,18 +41,42 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    dashboardActive.current = true;
     void fetchWorkflows();
+    return () => { dashboardActive.current = false; };
   }, [fetchWorkflows]);
 
   // Create a new empty workflow
   async function handleCreate() {
-    setError(null);
+    // Both entry points share the lock, which also covers the interval
+    // between the server acknowledging creation and the editor opening.
+    if (createPending.current) return;
+    createPending.current = true;
+    const pathname = window.location.pathname;
+    const stillOnDashboard = () => dashboardActive.current && window.location.pathname === pathname;
+    setCreateError(null);
+    setCreation({ status: 'creating' });
+    let workflowId: string;
+
     try {
       const workflow = await api.createWorkflow({ name: 'Untitled Workflow' });
-      router.push(`/editor/${workflow._id}`);
+      workflowId = workflow._id;
     } catch (err) {
-      setError(api.getApiErrorMessage(err, 'Unable to create a workflow. Please try again.'));
+      createPending.current = false;
+      if (!stillOnDashboard()) return;
+      setCreation(null);
+      const unconfirmed = !(err instanceof api.ApiError) || err.status >= 500 || err.code === 'INVALID_RESPONSE';
+      setCreateError(unconfirmed
+        ? 'The server did not confirm creation. Refresh the list to check for the new workflow before trying again.'
+        : api.getApiErrorMessage(err, 'Unable to create a workflow.'));
+      return;
     }
+
+    // The write may have completed even when the user navigated away.
+    // Leave it in the workspace without pulling them back into the editor.
+    if (!stillOnDashboard()) return;
+    setCreation({ status: 'opening', workflowId });
+    router.push(`/editor/${workflowId}`);
   }
 
   // Delete a workflow
@@ -86,10 +116,10 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="md" onClick={openAIModal}>
+          <Button variant="ghost" size="md" onClick={openAIModal} disabled={creation !== null}>
             ✦ Generate with AI
           </Button>
-          <Button onClick={handleCreate} size="md">
+          <Button onClick={handleCreate} size="md" isLoading={creation?.status === 'creating'} disabled={creation !== null}>
             + New Workflow
           </Button>
         </div>
@@ -99,6 +129,19 @@ export default function DashboardPage() {
         <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           <span>{error}</span>
           <Button variant="ghost" size="sm" onClick={fetchWorkflows}>Retry</Button>
+        </div>
+      )}
+
+      {createError && (
+        <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <span>{createError}</span>
+          <Button variant="ghost" size="sm" onClick={() => { setCreateError(null); void fetchWorkflows(); }}>Refresh list</Button>
+        </div>
+      )}
+      {creation?.status === 'opening' && (
+        <div role="status" className="mb-5 flex flex-wrap items-center gap-3 text-sm text-[var(--text-secondary)]">
+          <span>Workflow created. Opening the editor…</span>
+          <Button href={`/editor/${creation.workflowId}`} variant="secondary" size="sm">Open new workflow</Button>
         </div>
       )}
 
@@ -120,6 +163,8 @@ export default function DashboardPage() {
           workflows={workflows}
           onDelete={handleDelete}
           onCreate={handleCreate}
+          createDisabled={creation !== null}
+          createPending={creation?.status === 'creating'}
         />
       )}
       <AIGeneratorModal mode="create" />

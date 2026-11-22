@@ -13,9 +13,11 @@ interface WorkflowListProps {
   workflows: WorkflowSummary[];
   onDelete: (id: string) => void;
   onCreate: () => void;
+  createDisabled: boolean;
+  createPending: boolean;
 }
 
-export function WorkflowList({ workflows, onDelete, onCreate }: WorkflowListProps) {
+export function WorkflowList({ workflows, onDelete, onCreate, createDisabled, createPending }: WorkflowListProps) {
   const searchInput = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [runFilter, setRunFilter] = useState<WorkflowRunFilter>('all');
@@ -35,7 +37,7 @@ export function WorkflowList({ workflows, onDelete, onCreate }: WorkflowListProp
         title="No workflows yet"
         description="Create your first workflow manually or generate one with AI."
         action={
-          <Button onClick={onCreate} size="md">
+          <Button onClick={onCreate} size="md" disabled={createDisabled} isLoading={createPending}>
             Create Workflow
           </Button>
         }
