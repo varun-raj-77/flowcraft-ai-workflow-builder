@@ -153,7 +153,6 @@ export function WorkflowCanvas() {
           return;
         }
         if (incoming.length === 1 && outgoing.length === 1) {
-          if (!window.confirm(`Deleting ${node.data.label} will break its path. Reconnect the surrounding nodes?`)) return;
           const [before] = incoming;
           const [after] = outgoing;
           const connection = {
@@ -162,12 +161,15 @@ export function WorkflowCanvas() {
             sourceHandle: before.sourceHandle ?? null,
             targetHandle: after.targetHandle ?? null,
           };
-          if (before.source !== after.target && isValidConnection(connection)) {
-            graph.removeNodeAndReconnect(node.id, connection);
-            showUndoToast('Node deleted — Undo');
-            selectNode(null);
+          if (!isValidConnection(connection)) {
+            window.alert('Cannot safely reconnect these nodes. No changes were made. Use Delete node in the configuration panel to remove the node without reconnecting.');
             return;
           }
+          if (!window.confirm(`Deleting ${node.data.label} will break its path. Reconnect the surrounding nodes?`)) return;
+          graph.removeNodeAndReconnect(node.id, connection);
+          showUndoToast('Node deleted — Undo');
+          selectNode(null);
+          return;
         } else if (incoming.length + outgoing.length > 1
           && !window.confirm(`Delete ${node.data.label} and ${incoming.length + outgoing.length} affected connection(s)?`)) return;
         graph.removeNode(node.id);

@@ -1,8 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { executableWorkflow, installMockApi } from './mockApi';
 
-async function openWorkflow(page: Page) {
-  await installMockApi(page, { workflows: [executableWorkflow('workflow-graph-delete')] });
+async function openWorkflow(page: Page, directPath = false) {
+  const workflow = executableWorkflow('workflow-graph-delete');
+  if (directPath) workflow.edges.push({ id: 'start-end', source: 'start', target: 'end' });
+  await installMockApi(page, { workflows: [workflow] });
   await page.goto('/editor/workflow-graph-delete');
   const canvas = page.getByRole('application');
   await expect(canvas.getByText('Output Summary', { exact: true })).toBeVisible();
@@ -78,4 +80,20 @@ test('keyboard-selected connections can still be deleted and undone', async ({ p
   await page.getByText('Edge deleted — Undo', { exact: true }).locator('..').getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(canvas.locator('.react-flow__edge')).toHaveCount(2);
   await expect(page.getByText('Unsaved', { exact: true })).toHaveCount(0);
+});
+
+
+test('keyboard reconnect leaves the graph unchanged if the proposed connection already exists', async ({ page }) => {
+  const canvas = await openWorkflow(page, true);
+  const output = canvas.getByText('Output Summary', { exact: true });
+  await output.click();
+  const dialogs = handleNextDialog(page, 'accept');
+  await canvas.locator('[data-id="output"]').press('Delete');
+  await afterGraphPaint(page);
+
+  expect(dialogs).toEqual([{ type: 'alert', message: expect.stringMatching(/cannot safely reconnect.*no changes were made/i) }]);
+  await expect(output).toBeVisible();
+  await expect(canvas.locator('.react-flow__edge')).toHaveCount(3);
+  await expect(page.getByText('Unsaved', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Delete node', exact: true })).toBeVisible();
 });
