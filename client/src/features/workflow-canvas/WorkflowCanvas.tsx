@@ -124,38 +124,59 @@ export function WorkflowCanvas() {
   // ── Keyboard shortcuts ────────────────────────────────────
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
-      if (isReadOnly) return;
-      const target = event.target as HTMLElement;
-      if (target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        const selectedNodeId = useUIStore.getState().selectedNodeId;
-        if (selectedNodeId) {
-          const incoming = useWorkflowStore.getState().edges.filter((edge) => edge.target === selectedNodeId);
-          const outgoing = useWorkflowStore.getState().edges.filter((edge) => edge.source === selectedNodeId);
-          const node = useWorkflowStore.getState().nodes.find((item) => item.id === selectedNodeId);
-          if (node?.data.nodeType === 'start' || node?.data.nodeType === 'end') {
-            window.alert(`Delete ${node.data.label}? This may make the workflow non-runnable.`);
+      if (isReadOnly || (event.key !== 'Delete' && event.key !== 'Backspace')) return;
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
+
+      const graph = useWorkflowStore.getState();
+      const selectedNodes = graph.nodes.filter((node) => node.selected);
+      const selectedEdges = graph.edges.filter((edge) => edge.selected);
+      // React Flow keyboard selection does not fire the pointer click handler.
+      const node = selectedNodes[0] ?? (selectedEdges.length === 0
+        ? graph.nodes.find((candidate) => candidate.id === useUIStore.getState().selectedNodeId)
+        : undefined);
+      const selectedEdge = selectedEdges[0];
+      if (!node && !selectedEdge) return;
+
+      event.preventDefault();
+      if (event.repeat) return;
+      if (selectedNodes.length + selectedEdges.length > 1) {
+        window.alert('Select one node or connection at a time to delete it.');
+        return;
+      }
+
+      if (node) {
+        const incoming = graph.edges.filter((edge) => edge.target === node.id);
+        const outgoing = graph.edges.filter((edge) => edge.source === node.id);
+        if (node.data.nodeType === 'start' || node.data.nodeType === 'end') {
+          window.alert(`To delete ${node.data.label}, use Delete node in the configuration panel.`);
+          return;
+        }
+        if (incoming.length === 1 && outgoing.length === 1) {
+          if (!window.confirm(`Deleting ${node.data.label} will break its path. Reconnect the surrounding nodes?`)) return;
+          const [before] = incoming;
+          const [after] = outgoing;
+          const connection = {
+            source: before.source,
+            target: after.target,
+            sourceHandle: before.sourceHandle ?? null,
+            targetHandle: after.targetHandle ?? null,
+          };
+          if (before.source !== after.target && isValidConnection(connection)) {
+            graph.removeNodeAndReconnect(node.id, connection);
+            showUndoToast('Node deleted — Undo');
+            selectNode(null);
             return;
           }
-          if (incoming.length === 1 && outgoing.length === 1) {
-            const shouldReconnect = window.confirm(`Deleting ${node?.data.label ?? 'this node'} will break its path. Reconnect the surrounding nodes?`);
-            if (!shouldReconnect) return;
-            const [before] = incoming;
-            const [after] = outgoing;
-            if (before.source !== after.target && isValidConnection({ source: before.source, target: after.target, sourceHandle: before.sourceHandle ?? null, targetHandle: after.targetHandle ?? null })) {
-              useWorkflowStore.getState().removeNodeAndReconnect(selectedNodeId, { source: before.source, target: after.target, sourceHandle: before.sourceHandle ?? null, targetHandle: after.targetHandle ?? null });
-              showUndoToast('Node deleted — Undo');
-              selectNode(null);
-              return;
-            }
-          } else if (incoming.length + outgoing.length > 1 && !window.confirm(`Delete ${node?.data.label ?? 'this node'} and ${incoming.length + outgoing.length} affected connection(s)?`)) return;
-          useWorkflowStore.getState().removeNode(selectedNodeId);
-          showUndoToast('Node deleted — Undo');
-          selectNode(null);
-        } else {
-          const selectedEdge = useWorkflowStore.getState().edges.find((edge) => edge.selected);
-          if (selectedEdge) { useWorkflowStore.getState().removeEdge(selectedEdge.id); showUndoToast('Edge deleted — Undo'); }
-        }
+        } else if (incoming.length + outgoing.length > 1
+          && !window.confirm(`Delete ${node.data.label} and ${incoming.length + outgoing.length} affected connection(s)?`)) return;
+        graph.removeNode(node.id);
+        showUndoToast('Node deleted — Undo');
+        selectNode(null);
+      } else if (selectedEdge) {
+        graph.removeEdge(selectedEdge.id);
+        showUndoToast('Edge deleted — Undo');
+        selectNode(null);
       }
     },
     [isReadOnly, isValidConnection, selectNode, showUndoToast],
@@ -186,7 +207,7 @@ export function WorkflowCanvas() {
         isValidConnection={isValidConnection}
         nodesDraggable={!isReadOnly}
         nodesConnectable={!isReadOnly}
-        deleteKeyCode={isReadOnly ? null : ['Backspace', 'Delete']}
+        deleteKeyCode={null /* The guarded canvas handler owns deletion. */}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.2 }}
