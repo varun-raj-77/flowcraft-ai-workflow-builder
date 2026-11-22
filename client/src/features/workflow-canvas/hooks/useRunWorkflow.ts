@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -12,63 +12,43 @@ export function useRunWorkflow(save: () => Promise<boolean>) {
   const setCurrentRun = useExecutionStore((s) => s.setCurrentRun);
   const setLastError = useExecutionStore((s) => s.setLastError);
   const isRunning = useExecutionStore((s) => s.isRunning);
-  const dispatchPending = useRef(false);
-  const [isStarting, setIsStarting] = useState(false);
-  const { joinRun, prepareSocket } = useExecutionSocket();
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isStarting = useExecutionStore((s) => s.runDispatchToken !== null);
+  const activeRunId = useExecutionStore((s) => s.currentRun?._id);
+  const activeRunWorkflowId = useExecutionStore((s) => s.currentRun?.workflowId);
+  const editorWorkflowId = useWorkflowStore((s) => s.meta?._id);
+  const { joinRun, leaveCurrentRoom, prepareSocket } = useExecutionSocket();
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current);
-      pollTimeoutRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => stopPolling, [stopPolling]);
-
-  const startPolling = useCallback((runId: string) => {
-    stopPolling();
-
-    // Poll every 2 seconds until the run is no longer 'running'
-    pollRef.current = setInterval(() => {
-      void api.getExecution(runId).then((run) => {
-        if (useWorkflowStore.getState().meta?._id !== run.workflowId
-          || useExecutionStore.getState().currentRun?._id !== runId) {
-          stopPolling();
-          return;
-        }
-        setCurrentRun(run);
-
-        if (run.status !== 'running') {
-          stopPolling();
-        }
-      }).catch(() => {
-        // Ignore poll errors — will retry on next interval
-      });
-    }, 2000);
-
-    // Safety: stop polling after 60 seconds max
-    pollTimeoutRef.current = setTimeout(() => stopPolling(), 60000);
-  }, [setCurrentRun, stopPolling]);
+  // Socket ownership follows the active editor, which can remount when the
+  // first save promotes /editor/new. ExecutionPanel separately reconciles
+  // durable state by polling; don't start a second loop from the old toolbar.
+  useEffect(() => {
+    if (!isRunning || !activeRunId || activeRunWorkflowId !== editorWorkflowId) return;
+    joinRun(activeRunId);
+    return leaveCurrentRoom;
+  }, [activeRunId, activeRunWorkflowId, editorWorkflowId, isRunning, joinRun, leaveCurrentRoom]);
 
   const run = useCallback(async () => {
-    // Server execution state only arrives after the POST resolves. Guard this
-    // gap synchronously, including two Run events before React rerenders.
-    if (dispatchPending.current || useExecutionStore.getState().isRunning) return;
     if (useRevisionHistoryStore.getState().previewRevision || useRevisionComparisonStore.getState().comparison) {
       setLastError('Return to the current revision before running this workflow.');
       return;
     }
 
-    dispatchPending.current = true;
-    setIsStarting(true);
+    // The execution store survives only the legitimate first-save handoff:
+    // ordinary workflow loads clear it, invalidating the pending start token.
+    const execution = useExecutionStore.getState();
+    const token = execution.beginRunDispatch();
+    if (!token) return;
+    const pathname = window.location.pathname;
+    const { nodes, edges, meta, isDirty } = useWorkflowStore.getState();
+    let workflowId = meta?._id;
+    const canPromote = !workflowId && pathname === '/editor/new';
+    const ownsEditor = () => {
+      const currentPath = window.location.pathname;
+      return useExecutionStore.getState().runDispatchToken === token
+        && (currentPath === pathname || (canPromote && !!workflowId && currentPath === `/editor/${workflowId}`));
+    };
+
     try {
-      const { nodes, edges, meta, isDirty } = useWorkflowStore.getState();
       const preflight = validateWorkflowPreflight(nodes, edges);
       const errors = preflight.filter((finding) => finding.severity === 'error');
       if (errors.length) {
@@ -76,18 +56,17 @@ export function useRunWorkflow(save: () => Promise<boolean>) {
         return;
       }
       setLastError(null);
-      let workflowId = meta?._id;
 
       if (!workflowId || isDirty) {
-        const pathname = window.location.pathname;
         if (!await save()) return;
         const current = useWorkflowStore.getState();
-        if (workflowId && (window.location.pathname !== pathname || current.meta?._id !== workflowId)) return;
+        if (workflowId && current.meta?._id !== workflowId) return;
+        workflowId = current.meta?._id;
+        if (!ownsEditor()) return;
         if (current.isDirty) {
           setLastError('The workflow changed while saving. Save the latest edits before running.');
           return;
         }
-        workflowId = current.meta?._id;
       }
 
       if (!workflowId) {
@@ -98,27 +77,21 @@ export function useRunWorkflow(save: () => Promise<boolean>) {
       // configuration failure from leaving a new run displayed as pending.
       prepareSocket();
 
-      // Open the execution panel only after persistence succeeds.
       const uiState = useUIStore.getState();
-      if (!uiState.isExecutionPanelOpen) {
-        uiState.toggleExecutionPanel();
-      }
+      if (!uiState.isExecutionPanelOpen) uiState.setExecutionPanelOpen(true);
 
       const fullRun = await api.runWorkflow(workflowId);
+      if (!ownsEditor() || fullRun.workflowId !== workflowId
+        || useWorkflowStore.getState().meta?._id !== workflowId) return;
       setCurrentRun(fullRun);
-
-      // Try socket for real-time updates
-      joinRun(fullRun._id);
-
-      // Also start polling as a fallback — ensures UI updates even if socket fails
-      startPolling(fullRun._id);
     } catch (err) {
-      setLastError(api.getApiErrorMessage(err, 'Unable to run this workflow. Please try again.'));
+      if (ownsEditor()) {
+        setLastError(api.getApiErrorMessage(err, 'Unable to run this workflow. Please try again.'));
+      }
     } finally {
-      dispatchPending.current = false;
-      setIsStarting(false);
+      execution.finishRunDispatch(token);
     }
-  }, [save, setCurrentRun, setLastError, joinRun, prepareSocket, startPolling]);
+  }, [save, setCurrentRun, setLastError, prepareSocket]);
 
   return { run, isRunning, isStarting };
 }
