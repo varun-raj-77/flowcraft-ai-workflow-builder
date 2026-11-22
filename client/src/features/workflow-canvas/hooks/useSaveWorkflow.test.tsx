@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWorkflowStore } from '@/stores/workflowStore';
+import * as api from '@/lib/api';
 import type { Workflow } from '@/types';
 
 const mocks = vi.hoisted(() => ({
@@ -11,7 +12,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: mocks.replace }) }));
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...await importOriginal<typeof api>(),
   updateWorkflow: mocks.updateWorkflow,
   createWorkflow: mocks.createWorkflow,
 }));
@@ -85,6 +87,70 @@ describe('useSaveWorkflow', () => {
     expect(mocks.updateWorkflow).toHaveBeenCalledWith('workflow-1', expect.objectContaining({
       expectedRevision: 1,
     }));
+  });
+
+  it('keeps the failure visible after the old timeout and preserves the draft until retry succeeds', async () => {
+    const store = useWorkflowStore.getState();
+    store.setWorkflow(savedWorkflow);
+    store.addNode('delay', { x: 0, y: 0 });
+    const failure = new api.ApiError(503, 'UNAVAILABLE', 'Service temporarily unavailable.');
+    const persisted = {
+      ...savedWorkflow,
+      nodes: store.toWorkflowNodes(),
+      currentRevision: 2,
+      currentRevisionId: 'revision-2',
+    };
+    mocks.updateWorkflow.mockRejectedValueOnce(failure).mockResolvedValueOnce(persisted);
+    const { result } = renderHook(() => useSaveWorkflow());
+
+    await act(async () => { await expect(result.current.save()).rejects.toBe(failure); });
+    act(() => { vi.advanceTimersByTime(10_000); });
+    expect(result.current.status).toBe('error');
+    expect(result.current.saveError).toMatch(/temporarily unavailable.*edits are still here/i);
+    expect(useWorkflowStore.getState().isDirty).toBe(true);
+    expect(store.toWorkflowNodes()).toHaveLength(1);
+
+    await act(async () => { await expect(result.current.save()).resolves.toBe(true); });
+    expect(result.current.status).toBe('saved');
+    expect(result.current.saveError).toBeNull();
+    expect(useWorkflowStore.getState().isDirty).toBe(false);
+  });
+
+  it('explains a stale revision without suggesting the user discard the current draft', async () => {
+    mocks.updateWorkflow.mockRejectedValueOnce(new api.ApiError(409, 'WORKFLOW_REVISION_CONFLICT', 'Conflict.'));
+    const { result } = renderHook(() => useSaveWorkflow());
+    await act(async () => { await expect(result.current.save()).rejects.toMatchObject({ status: 409 }); });
+    expect(result.current.saveError).toMatch(/newer revision is already saved.*edits are still in this tab.*another tab/i);
+    expect(useWorkflowStore.getState().isDirty).toBe(true);
+  });
+
+  it('warns about an unconfirmed first save without silently starting a second request', async () => {
+    const store = useWorkflowStore.getState();
+    store.clearWorkflow();
+    store.addNode('delay', { x: 0, y: 0 });
+    const failure = new TypeError('Network request failed');
+    mocks.createWorkflow.mockRejectedValueOnce(failure);
+    const { result } = renderHook(() => useSaveWorkflow());
+    await act(async () => { await expect(result.current.save()).rejects.toBe(failure); });
+    expect(result.current.saveError).toMatch(/did not confirm the first save.*check the dashboard/i);
+    expect(mocks.createWorkflow).toHaveBeenCalledTimes(1);
+    expect(store.toWorkflowNodes()).toHaveLength(1);
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it('does not show an old save error in a different workflow', async () => {
+    let rejectSave!: (error: Error) => void;
+    mocks.updateWorkflow.mockReturnValueOnce(new Promise<Workflow>((_, reject) => { rejectSave = reject; }));
+    const { result } = renderHook(() => useSaveWorkflow());
+    const failure = new api.ApiError(503, 'UNAVAILABLE', 'Old failure.');
+    await act(async () => {
+      const save = result.current.save();
+      useWorkflowStore.getState().setWorkflow({ ...savedWorkflow, _id: 'workflow-2' });
+      rejectSave(failure);
+      await expect(save).rejects.toBe(failure);
+    });
+    expect(result.current.status).toBe('idle');
+    expect(result.current.saveError).toBeNull();
   });
 
   it('cleans up transient status timers on unmount', async () => {
