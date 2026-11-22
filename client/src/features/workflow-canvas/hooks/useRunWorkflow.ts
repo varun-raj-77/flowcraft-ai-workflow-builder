@@ -1,21 +1,19 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { useExecutionStore } from '@/stores/executionStore';
 import { useUIStore } from '@/stores/uiStore';
-import { useSaveWorkflow } from './useSaveWorkflow';
 import { useExecutionSocket } from '@/features/execution-viewer/hooks/useExecutionSocket';
 import * as api from '@/lib/api';
 import { validateWorkflowPreflight } from '../workflowPreflight';
 import { useRevisionHistoryStore } from '@/stores/revisionHistoryStore';
 import { useRevisionComparisonStore } from '@/stores/revisionComparisonStore';
 
-export function useRunWorkflow() {
-  const meta = useWorkflowStore((s) => s.meta);
-  const isDirty = useWorkflowStore((s) => s.isDirty);
+export function useRunWorkflow(save: () => Promise<boolean>) {
   const setCurrentRun = useExecutionStore((s) => s.setCurrentRun);
   const setLastError = useExecutionStore((s) => s.setLastError);
   const isRunning = useExecutionStore((s) => s.isRunning);
-  const { save } = useSaveWorkflow();
+  const dispatchPending = useRef(false);
+  const [isStarting, setIsStarting] = useState(false);
   const { joinRun, prepareSocket } = useExecutionSocket();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,14 +57,19 @@ export function useRunWorkflow() {
   }, [setCurrentRun, stopPolling]);
 
   const run = useCallback(async () => {
-    if (isRunning) return;
+    // Server execution state only arrives after the POST resolves. Guard this
+    // gap synchronously, including two Run events before React rerenders.
+    if (dispatchPending.current || useExecutionStore.getState().isRunning) return;
     if (useRevisionHistoryStore.getState().previewRevision || useRevisionComparisonStore.getState().comparison) {
       setLastError('Return to the current revision before running this workflow.');
       return;
     }
 
+    dispatchPending.current = true;
+    setIsStarting(true);
     try {
-      const preflight = validateWorkflowPreflight(useWorkflowStore.getState().nodes, useWorkflowStore.getState().edges);
+      const { nodes, edges, meta, isDirty } = useWorkflowStore.getState();
+      const preflight = validateWorkflowPreflight(nodes, edges);
       const errors = preflight.filter((finding) => finding.severity === 'error');
       if (errors.length) {
         setLastError(`Workflow Preflight found ${errors.length} issue${errors.length === 1 ? '' : 's'}. Resolve them before running.`);
@@ -111,8 +114,11 @@ export function useRunWorkflow() {
       startPolling(fullRun._id);
     } catch (err) {
       setLastError(api.getApiErrorMessage(err, 'Unable to run this workflow. Please try again.'));
+    } finally {
+      dispatchPending.current = false;
+      setIsStarting(false);
     }
-  }, [meta, isDirty, isRunning, save, setCurrentRun, setLastError, joinRun, prepareSocket, startPolling]);
+  }, [save, setCurrentRun, setLastError, joinRun, prepareSocket, startPolling]);
 
-  return { run, isRunning };
+  return { run, isRunning, isStarting };
 }
